@@ -46,6 +46,8 @@ library
     Feldspar.Hardware.Frontend
     Feldspar.Hardware.Compile
     Feldspar.Hardware
+    Feldspar.Verify
+    Feldspar.Verify.Representation
     Feldspar.Data.Array
     Feldspar.Data.Vector
     Feldspar.Data.Option
@@ -88,6 +90,7 @@ library
     mtl,
     operational-alacarte,
     prelude-edsl >= 0.4,
+    smtlib2,
     syntactic >= 3.6.1,
       -- Smallest version that has `instD`
     template-haskell

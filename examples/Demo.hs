@@ -9,7 +9,29 @@ import qualified Prelude
 import Feldspar.Run
 import Feldspar.Data.Vector
 
+absolute :: Run ()
+absolute = do
+  printf "Enter a number: "
+  n <- fget stdin
+  iff (n == minBound) (printf "Don't enter minBound\n") $ do
+    ref <- initRef n :: Run (Ref Int32)
+    -- Written in an ugly way just to check the verification
+    i <- getRef ref
+    iff (i < 0) (setRef ref (negate i)) (return ())
 
+    i <- getRef ref
+    assert (i >= 0) "Absolute value is negative"
+    assert (i == n || i == negate n) "Absolute value is wrong"
+    printf "The absolute value is %d\n" i
+
+sigma :: Run ()
+sigma = do
+  printf "Enter a number: "
+  n <- fget stdin
+
+  let total = forLoop n 0 (+)
+  assert (total+total == n*(n-1)) "Total is wrong"
+  printf "The sum is %d\n" total
 
 sumInput :: Run ()
 sumInput = do
