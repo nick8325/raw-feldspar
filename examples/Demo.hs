@@ -7,6 +7,7 @@ module Demo where
 import qualified Prelude
 
 import Feldspar.Run
+import Feldspar.Verify
 import Feldspar.Data.Vector
 
 absolute :: Run ()
