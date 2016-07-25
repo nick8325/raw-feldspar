@@ -20,9 +20,8 @@ verified' opts backend prog = do
     Verify.verify .
     translate (Env mempty opts) .
     liftRun $ prog
-  unless (null warns) $ do
-    putStrLn "Warnings:"
-    sequence_ [putStrLn ("  " ++ warn) | warn <- warns]
-    putStrLn ""
-  backend prog'
+  backend prog' <*
+    unless (null warns) (do
+      putStrLn "Warnings:"
+      sequence_ [putStrLn ("  " ++ warn) | warn <- warns])
 
