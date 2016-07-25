@@ -221,9 +221,7 @@ primEval ::
   (PrimType' (DenResult a), SMTEval Prim (DenResult a)) =>
   Primitive a -> Args (AST PrimDomain) a ->
   Verify (SMTExpr Prim (DenResult a))
-primEval (FreeVar x) _ = do
-  ValBinding val <- peek x
-  return val
+primEval (FreeVar x) _ = peekVal x
 primEval (Lit x) _ = return (fromConstant x)
 primEval Add (x :* y :* Nil)
   | Dict <- witnessNum (undefined :: Prim (DenResult a)) =
