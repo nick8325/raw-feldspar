@@ -2,9 +2,8 @@
 module Feldspar.Verify.Representation where
 
 import Language.Embedded.Verify hiding (ite)
-import Language.SMTLib2 hiding (SMTExpr, SMTType, SMTOrd(..), Args, (.==.))
-import Language.SMTLib2.Internals hiding (SMTExpr, SMTType, SMTOrd(..), Args, (.==.))
-import qualified Language.SMTLib2 as SMT
+import Language.Embedded.Verify.SMT hiding (Bool, abs)
+import qualified Language.Embedded.Verify.SMT as SMT
 import Feldspar.Primitive.Representation
 import Language.Syntactic
 import Data.Constraint(Dict(..))
@@ -14,39 +13,39 @@ import Data.Complex
 import Data.Typeable
 import Language.Embedded.Imperative.CMD
 import Language.Embedded.Verify.Arithmetic
-import Data.Void
 import Control.Monad
 import Control.Monad.Trans
 
 instance SMTEval1 Prim where
   type Pred Prim = PrimType'
-  newtype SMTExpr Prim Bool = Bool (SMT.SMTExpr Bool)
+  newtype SMTExpr Prim Bool = Bool SExpr
     deriving Typeable
-  newtype SMTExpr Prim Float = Float (SMT.SMTExpr Rational)
-    deriving (Typeable, Num, SMTOrd)
-  newtype SMTExpr Prim Double = Double (SMT.SMTExpr Rational)
-    deriving (Typeable, Num, SMTOrd)
-  -- We don't support complex arithmetic yet, these are stubs.
-  newtype SMTExpr Prim (Complex Float) = CFloat Void
+  -- XXX leave these uninterpreted?
+  newtype SMTExpr Prim Float = Float Rat
+    deriving (Typeable, Num, SMTOrd, TypedSExpr)
+  newtype SMTExpr Prim Double = Double Rat
+    deriving (Typeable, Num, SMTOrd, TypedSExpr)
+  -- XXX make these uninterpreted?
+  data SMTExpr Prim (Complex Float)
     deriving Typeable
-  newtype SMTExpr Prim (Complex Double) = CDouble Void
+  data SMTExpr Prim (Complex Double)
     deriving Typeable
-  newtype SMTExpr Prim Int8   = Int8   (Signed N8)
-    deriving (Typeable, Num, SMTOrd)
-  newtype SMTExpr Prim Int16  = Int16  (Signed N16)
-    deriving (Typeable, Num, SMTOrd)
-  newtype SMTExpr Prim Int32  = Int32  (Signed N32)
-    deriving (Typeable, Num, SMTOrd)
-  newtype SMTExpr Prim Int64  = Int64  (Signed N64)
-    deriving (Typeable, Num, SMTOrd)
-  newtype SMTExpr Prim Word8  = Word8  (Unsigned N8)
-    deriving (Typeable, Num, SMTOrd)
-  newtype SMTExpr Prim Word16 = Word16 (Unsigned N16)
-    deriving (Typeable, Num, SMTOrd)
-  newtype SMTExpr Prim Word32 = Word32 (Unsigned N32)
-    deriving (Typeable, Num, SMTOrd)
-  newtype SMTExpr Prim Word64 = Word64 (Unsigned N64)
-    deriving (Typeable, Num, SMTOrd)
+  newtype SMTExpr Prim Int8   = Int8   (BV Signed W8)
+    deriving (Typeable, Num, SMTOrd, TypedSExpr)
+  newtype SMTExpr Prim Int16  = Int16  (BV Signed W16)
+    deriving (Typeable, Num, SMTOrd, TypedSExpr)
+  newtype SMTExpr Prim Int32  = Int32  (BV Signed W32)
+    deriving (Typeable, Num, SMTOrd, TypedSExpr)
+  newtype SMTExpr Prim Int64  = Int64  (BV Signed W64)
+    deriving (Typeable, Num, SMTOrd, TypedSExpr)
+  newtype SMTExpr Prim Word8  = Word8  (BV Unsigned W8)
+    deriving (Typeable, Num, SMTOrd, TypedSExpr)
+  newtype SMTExpr Prim Word16 = Word16 (BV Unsigned W16)
+    deriving (Typeable, Num, SMTOrd, TypedSExpr)
+  newtype SMTExpr Prim Word32 = Word32 (BV Unsigned W32)
+    deriving (Typeable, Num, SMTOrd, TypedSExpr)
+  newtype SMTExpr Prim Word64 = Word64 (BV Unsigned W64)
+    deriving (Typeable, Num, SMTOrd, TypedSExpr)
 
   eval (Prim exp :: Prim a) =
     simpleMatch (\(exp :&: ty) ->
@@ -73,148 +72,97 @@ instance SMTEval1 Prim where
       ComplexDoubleT -> Dict
 
 instance SMTOrd (SMTExpr Prim Bool) where
-  Bool x .<.  Bool y = not' x .&&. y
-  Bool x .>.  Bool y = x .&&. not' y
-  Bool x .<=. Bool y = not' x .||. y
-  Bool x .>=. Bool y = x .||. not' y
-instance SMTOrd (SMT.SMTExpr Rational)
+  Bool x .<.  Bool y = SMT.not x .&&. y
+  Bool x .>.  Bool y = x .&&. SMT.not y
+  Bool x .<=. Bool y = SMT.not x .||. y
+  Bool x .>=. Bool y = x .||. SMT.not y
 
-instance Fresh (SMTExpr Prim Bool)   where fresh = fmap Bool   . fresh
-instance Fresh (SMTExpr Prim Int8)   where fresh = fmap Int8   . fresh
-instance Fresh (SMTExpr Prim Int16)  where fresh = fmap Int16  . fresh
-instance Fresh (SMTExpr Prim Int32)  where fresh = fmap Int32  . fresh
-instance Fresh (SMTExpr Prim Int64)  where fresh = fmap Int64  . fresh
-instance Fresh (SMTExpr Prim Word8)  where fresh = fmap Word8  . fresh
-instance Fresh (SMTExpr Prim Word16) where fresh = fmap Word16 . fresh
-instance Fresh (SMTExpr Prim Word32) where fresh = fmap Word32 . fresh
-instance Fresh (SMTExpr Prim Word64) where fresh = fmap Word64 . fresh
-instance Fresh (SMTExpr Prim Float)  where fresh = fmap Float   . fresh
-instance Fresh (SMTExpr Prim Double) where fresh = fmap Double   . fresh
-instance Fresh (SMTExpr Prim (Complex Float))  where fresh = fmap CFloat  . fresh
-instance Fresh (SMTExpr Prim (Complex Double)) where fresh = fmap CDouble . fresh
-
-instance SMTEval Prim Bool where
-  type SMTType Prim Bool = Bool
+instance TypedSExpr (SMTExpr Prim Bool) where
+  smtType _ = tBool
   toSMT (Bool x) = x
   fromSMT = Bool
-  fromConstant = Bool . constant
+
+instance SMTEval Prim Bool where
+  fromConstant = Bool . bool
   witnessOrd _ = Dict
 
 instance SMTEval Prim Int8 where
-  type SMTType Prim Int8 = BV8
-  toSMT (Int8 (Signed x)) = x
-  fromSMT = Int8 . Signed
   fromConstant = Int8 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
   witnessIntegral _ = Dict
 
 instance SMTEval Prim Int16 where
-  type SMTType Prim Int16 = BV16
-  toSMT (Int16 (Signed x)) = x
-  fromSMT = Int16 . Signed
   fromConstant = Int16 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
   witnessIntegral _ = Dict
 
 instance SMTEval Prim Int32 where
-  type SMTType Prim Int32 = BV32
-  toSMT (Int32 (Signed x)) = x
-  fromSMT = Int32 . Signed
   fromConstant = Int32 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
   witnessIntegral _ = Dict
 
 instance SMTEval Prim Int64 where
-  type SMTType Prim Int64 = BV64
-  toSMT (Int64 (Signed x)) = x
-  fromSMT = Int64 . Signed
   fromConstant = Int64 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
   witnessIntegral _ = Dict
 
 instance SMTEval Prim Word8 where
-  type SMTType Prim Word8 = BV8
-  toSMT (Word8 (Unsigned x)) = x
-  fromSMT = Word8 . Unsigned
   fromConstant = Word8 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
   witnessIntegral _ = Dict
 
 instance SMTEval Prim Word16 where
-  type SMTType Prim Word16 = BV16
-  toSMT (Word16 (Unsigned x)) = x
-  fromSMT = Word16 . Unsigned
   fromConstant = Word16 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
   witnessIntegral _ = Dict
 
 instance SMTEval Prim Word32 where
-  type SMTType Prim Word32 = BV32
-  toSMT (Word32 (Unsigned x)) = x
-  fromSMT = Word32 . Unsigned
   fromConstant = Word32 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
   witnessIntegral _ = Dict
 
 instance SMTEval Prim Word64 where
-  type SMTType Prim Word64 = BV64
-  toSMT (Word64 (Unsigned x)) = x
-  fromSMT = Word64 . Unsigned
   fromConstant = Word64 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
   witnessIntegral _ = Dict
 
 instance SMTEval Prim Float where
-  type SMTType Prim Float = Rational
-  toSMT (Float x) = x
-  fromSMT = Float
   fromConstant = Float . fromRational . toRational
-  witnessOrd      _ = Dict
+  witnessOrd _ = Dict
   witnessNum _ = Dict
 
 instance SMTEval Prim Double where
-  type SMTType Prim Double = Rational
-  toSMT (Double x) = x
-  fromSMT = Double
   fromConstant = Double . fromRational . toRational
-  witnessOrd      _ = Dict
+  witnessOrd _ = Dict
   witnessNum _ = Dict
 
+instance TypedSExpr (SMTExpr Prim (Complex Float)) where
+  smtType = error "complex arithmetic not supported"
+  toSMT   = error "complex arithmetic not supported"
+  fromSMT = error "complex arithmetic not supported"
+
+instance TypedSExpr (SMTExpr Prim (Complex Double)) where
+  smtType = error "complex arithmetic not supported"
+  toSMT   = error "complex arithmetic not supported"
+  fromSMT = error "complex arithmetic not supported"
+
 instance SMTEval Prim (Complex Float) where
-  type SMTType Prim (Complex Float) = Void
-  toSMT (CFloat x) = absurd x
-  fromSMT = error "complex numbers not supported"
-  fromConstant = error "complex numbers not supported"
-  witnessOrd _ = error "complex numbers not supported"
-  witnessNum _ = error "complex numbers not supported"
+  fromConstant = error "complex arithmetic not supported"
+  witnessOrd   = error "complex arithmetic not supported"
+  witnessNum   = error "complex arithmetic not supported"
 
 instance SMTEval Prim (Complex Double) where
-  type SMTType Prim (Complex Double) = Void
-  toSMT (CDouble x) = absurd x
-  fromSMT = error "complex numbers not supported"
-  fromConstant = error "complex numbers not supported"
-  witnessOrd _ = error "complex numbers not supported"
-  witnessNum _ = error "complex numbers not supported"
-
-instance Fresh Void where fresh = error "complex numbers not supported"
-instance SMTValue Void where
-  mangle = error "complex numbers not supported"
-  unmangle = error "complex numbers not supported"
-
-instance SMT.SMTType Void where
-  type SMTAnnotation Void = ()
-  getSort x _ = absurd x
-  asValueType x _ _ = absurd x
-  annotationFromSort x _ = absurd x
-  defaultExpr = error "complex numbers not supported"
+  fromConstant = error "complex arithmetic not supported"
+  witnessOrd   = error "complex arithmetic not supported"
+  witnessNum   = error "complex arithmetic not supported"
 
 primEval ::
   forall a.
@@ -244,19 +192,18 @@ primEval Sign (x :* Nil)
 primEval I2N ((x :: ASTF PrimDomain b) :* Nil)
   | Dict <- witnessPred (undefined :: Prim b),
     Dict <- witnessIntegral (undefined :: Prim b) = do
-    bvToRealFun <- global "bv-to-real"
-    fmap (i2n (app bvToRealFun)) (eval (Prim x))
+    fmap i2n (eval (Prim x))
 primEval I2B ((x :: ASTF PrimDomain b) :* Nil)
   | Dict <- witnessPred (undefined :: Prim b),
     Dict <- witnessNum (undefined :: Prim b) = do
     x <- eval (Prim x)
-    return (fromSMT (not' (x .==. 0)))
+    return (fromSMT (SMT.not (x .==. 0)))
 primEval B2I (x :* Nil)
   | Dict <- witnessNum (undefined :: Prim (DenResult a)) = do
     x <- eval (Prim x)
     return (smtIte (toSMT x) 1 0)
 primEval Not (x :* Nil) =
-  fmap (fromSMT . not' . toSMT) (eval (Prim x))
+  fmap (fromSMT . SMT.not . toSMT) (eval (Prim x))
 primEval And (x :* y :* Nil) = do
   x <- eval (Prim x)
   y <- eval (Prim y)
@@ -272,7 +219,7 @@ primEval NEq ((x :: ASTF PrimDomain b) :* y :* Nil)
   | Dict <- witnessPred (undefined :: Prim b) =
     fmap fromSMT (liftM2 (./=.) (eval (Prim x)) (eval (Prim y)))
   where
-    x ./=. y = not' (x .==. y)
+    x ./=. y = SMT.not (x .==. y)
 primEval Lt ((x :: ASTF PrimDomain b) :* y :* Nil)
   | Dict <- witnessPred (undefined :: Prim b),
     Dict <- witnessOrd  (undefined :: Prim b) =
@@ -292,52 +239,59 @@ primEval Ge ((x :: ASTF PrimDomain b) :* y :* Nil)
 primEval (ArrIx (IArrComp name :: IArr Index b)) (i :* Nil) = do
   arr <- peek name :: Verify (ArrBinding Prim Index b)
   i   <- eval (Prim i)
-  return (fromSMT (select (arr_value arr) (toSMT i)))
+  return (fromSMT (select (toSMT (arr_value arr)) (toSMT i)))
 primEval Cond (cond :* x :* y :* Nil) =
   liftM3 smtIte (fmap toSMT (eval (Prim cond))) (eval (Prim x)) (eval (Prim y))
 primEval exp _ = error ("Unimplemented: " ++ show exp)
 
--- NB we don't use this because it's too expensive.
--- Instead, int-to-rational conversion is left unspecified.
-bvToReal :: SMT.SMTExpr BV64 -> SMT.SMTExpr Rational
-bvToReal x =
-  sum [SMT.ite (bvand x (fromInteger (2^i)) SMT..==. 0) 0 (2^i) | i <- [0..63]]
-
 i2n ::
+  forall a b.
   (SMTEval Prim a, SMTEval Prim b, PrimType' a, PrimType' b, Integral a, Num b) =>
-  (SMT.SMTExpr BV64 -> SMT.SMTExpr Rational) ->
   SMTExpr Prim a -> SMTExpr Prim b
-i2n bvToReal = fromBV64 . toBV64
+i2n x =
+  toBV x $
+  case primTypeRep :: PrimTypeRep b of
+    Int8T   -> Int8   . i2i
+    Int16T  -> Int16  . i2i
+    Int32T  -> Int32  . i2i
+    Int64T  -> Int64  . i2i
+    Word8T  -> Word8  . i2i
+    Word16T -> Word16 . i2i
+    Word32T -> Word32 . i2i
+    Word64T -> Word64 . i2i
+    FloatT  -> Float  . i2f
+    DoubleT -> Double . i2f
+    ComplexFloatT  -> error "complex numbers not supported"
+    ComplexDoubleT -> error "complex numbers not supported"
+
   where
-    fromBV64 :: forall a. (SMTEval Prim a, PrimType' a, Num a) => SMT.SMTExpr BV64 -> SMTExpr Prim a
-    fromBV64 x =
+    toBV ::
+      forall a b.
+      (SMTEval Prim a, PrimType' a, Integral a) =>
+      SMTExpr Prim a ->
+      (forall s w. (Sign s, Width w) => BV s w -> b) -> b
+    toBV (x :: SMTExpr Prim a) k =
       case primTypeRep :: PrimTypeRep a of
-        Int8T    -> let (_, _, _, _, _, _, _, y) = bvsplitu64to8  x in fromSMT y
-        Int16T   -> let             (_, _, _, y) = bvsplitu64to16 x in fromSMT y
-        Int32T   -> let                   (_, y) = bvsplitu64to32 x in fromSMT y
-        Int64T   -> fromSMT x
-        Word8T   -> let (_, _, _, _, _, _, _, y) = bvsplitu64to8  x in fromSMT y
-        Word16T  -> let             (_, _, _, y) = bvsplitu64to16 x in fromSMT y
-        Word32T  -> let                   (_, y) = bvsplitu64to32 x in fromSMT y
-        Word64T  -> fromSMT x
-        FloatT   -> fromSMT (bvToReal x)
-        DoubleT  -> fromSMT (bvToReal x)
-        ComplexFloatT  -> error "complex numbers not supported"
-        ComplexDoubleT -> error "complex numbers not supported"
+        Int8T   -> let Int8   y = x in k y
+        Int16T  -> let Int16  y = x in k y
+        Int32T  -> let Int32  y = x in k y
+        Int64T  -> let Int64  y = x in k y
+        Word8T  -> let Word8  y = x in k y
+        Word16T -> let Word16 y = x in k y
+        Word32T -> let Word32 y = x in k y
+        Word64T -> let Word64 y = x in k y
 
-    toBV64 :: (SMTEval Prim a, PrimType' a, Integral a) => SMTExpr Prim a -> SMT.SMTExpr BV64
-    toBV64 (x :: SMTExpr Prim a) =
-      case primTypeRep :: PrimTypeRep a of
-        Int8T   -> bvconcat (0 :: SMT.SMTExpr (BitVector (BVTyped N56))) (toSMT x)
-        Int16T  -> bvconcat (0 :: SMT.SMTExpr (BitVector (BVTyped N48))) (toSMT x)
-        Int32T  -> bvconcat (0 :: SMT.SMTExpr (BitVector (BVTyped N32))) (toSMT x)
-        Int64T  -> toSMT x
-        Word8T  -> bvconcat (0 :: SMT.SMTExpr (BitVector (BVTyped N56))) (toSMT x)
-        Word16T -> bvconcat (0 :: SMT.SMTExpr (BitVector (BVTyped N48))) (toSMT x)
-        Word32T -> bvconcat (0 :: SMT.SMTExpr (BitVector (BVTyped N32))) (toSMT x)
-        Word64T -> toSMT x
+    i2f :: (Sign s, Width w) => BV s w -> Rat
+    i2f (BV x) = Rat (fun "to_real" [fun "bv2int" [x]])
 
-withFeldsparGlobals :: Verify a -> Verify a
-withFeldsparGlobals mx = do
-  bvToReal <- lift fun :: Verify (SMTFunction (SMT.SMTExpr BV64) Rational)
-  withGlobals [("bv-to-real", Global bvToReal)] mx
+    i2i :: forall s1 w1 s2 w2. (Sign s1, Width w1, Sign s2, Width w2) => BV s1 w1 -> BV s2 w2
+    i2i x =
+      case compare m n of
+        LT
+         | isSigned x -> fromSMT (zeroExtend (n-m) (toSMT x))
+         | otherwise  -> fromSMT (signExtend (n-m) (toSMT x))
+        EQ -> fromSMT (toSMT x)
+        GT -> fromSMT (extract (toSMT x) (n-1) 0)
+      where
+        m = width (undefined :: w1)
+        n = width (undefined :: w2)

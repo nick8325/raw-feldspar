@@ -90,7 +90,7 @@ library
     mtl,
     operational-alacarte,
     prelude-edsl >= 0.4,
-    smtlib2,
+    simple-smt,
     syntactic >= 3.6.1,
       -- Smallest version that has `instD`
     template-haskell
