@@ -341,5 +341,5 @@ i2n bvToReal = fromBV64 . toBV64
 
 withFeldsparGlobals :: Verify a -> Verify a
 withFeldsparGlobals mx = do
-  bvToReal <- lift fun :: Verify (SMTFunction (SMT.SMTExpr BV64) Integer)
+  bvToReal <- lift fun :: Verify (SMTFunction (SMT.SMTExpr BV64) Rational)
   withGlobals [("bv-to-real", Global bvToReal)] mx
