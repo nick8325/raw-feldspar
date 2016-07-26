@@ -288,8 +288,8 @@ i2n x =
     i2i x =
       case compare m n of
         LT
-         | isSigned x -> fromSMT (zeroExtend (n-m) (toSMT x))
-         | otherwise  -> fromSMT (signExtend (n-m) (toSMT x))
+         | isSigned x -> fromSMT (signExtend (n-m) (toSMT x))
+         | otherwise  -> fromSMT (zeroExtend (n-m) (toSMT x))
         EQ -> fromSMT (toSMT x)
         GT -> fromSMT (extract (toSMT x) (n-1) 0)
       where
