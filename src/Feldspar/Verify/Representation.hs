@@ -20,16 +20,14 @@ instance SMTEval1 Prim where
   type Pred Prim = PrimType'
   newtype SMTExpr Prim Bool = Bool SExpr
     deriving Typeable
-  -- XXX leave these uninterpreted?
-  newtype SMTExpr Prim Float = Float Rat
+  newtype SMTExpr Prim Float = Float (Symbolic SFloat)
     deriving (Typeable, Num, SMTOrd, TypedSExpr)
-  newtype SMTExpr Prim Double = Double Rat
+  newtype SMTExpr Prim Double = Double (Symbolic SDouble)
     deriving (Typeable, Num, SMTOrd, TypedSExpr)
-  -- XXX make these uninterpreted?
-  data SMTExpr Prim (Complex Float)
-    deriving Typeable
-  data SMTExpr Prim (Complex Double)
-    deriving Typeable
+  newtype SMTExpr Prim (Complex Float) = CFloat (Symbolic SCFloat)
+    deriving (Typeable, Num, TypedSExpr)
+  newtype SMTExpr Prim (Complex Double) = CDouble (Symbolic SCDouble)
+    deriving (Typeable, Num, TypedSExpr)
   newtype SMTExpr Prim Int8   = Int8   (BV Signed W8)
     deriving (Typeable, Num, SMTOrd, TypedSExpr)
   newtype SMTExpr Prim Int16  = Int16  (BV Signed W16)
@@ -144,25 +142,13 @@ instance SMTEval Prim Double where
   witnessOrd _ = Dict
   witnessNum _ = Dict
 
-instance TypedSExpr (SMTExpr Prim (Complex Float)) where
-  smtType = error "complex arithmetic not supported"
-  toSMT   = error "complex arithmetic not supported"
-  fromSMT = error "complex arithmetic not supported"
-
-instance TypedSExpr (SMTExpr Prim (Complex Double)) where
-  smtType = error "complex arithmetic not supported"
-  toSMT   = error "complex arithmetic not supported"
-  fromSMT = error "complex arithmetic not supported"
-
 instance SMTEval Prim (Complex Float) where
-  fromConstant = error "complex arithmetic not supported"
-  witnessOrd   = error "complex arithmetic not supported"
-  witnessNum   = error "complex arithmetic not supported"
+  fromConstant = CFloat . fromComplex
+  witnessNum _ = Dict
 
 instance SMTEval Prim (Complex Double) where
-  fromConstant = error "complex arithmetic not supported"
-  witnessOrd   = error "complex arithmetic not supported"
-  witnessNum   = error "complex arithmetic not supported"
+  fromConstant = CDouble . fromComplex
+  witnessNum _ = Dict
 
 primEval ::
   forall a.
@@ -259,10 +245,10 @@ i2n x =
     Word16T -> Word16 . i2i
     Word32T -> Word32 . i2i
     Word64T -> Word64 . i2i
-    FloatT  -> Float  . i2f
-    DoubleT -> Double . i2f
-    ComplexFloatT  -> error "complex numbers not supported"
-    ComplexDoubleT -> error "complex numbers not supported"
+    FloatT  -> Float  . Symbolic . i2f
+    DoubleT -> Double . Symbolic . i2f
+    ComplexFloatT  -> CFloat  . Symbolic . i2f
+    ComplexDoubleT -> CDouble . Symbolic . i2f
 
   where
     toBV ::
@@ -295,3 +281,64 @@ i2n x =
       where
         m = width (undefined :: w1)
         n = width (undefined :: w2)
+
+newtype Symbolic a = Symbolic Rat
+  deriving (Eq, Ord, Show, TypedSExpr, SMTOrd)
+
+data SFloat
+data SDouble
+data SCFloat
+data SCDouble
+
+class SymbParam a where symbType :: a -> String
+instance SymbParam SFloat   where symbType _ = "float"
+instance SymbParam SDouble  where symbType _ = "double"
+instance SymbParam SCFloat  where symbType _ = "cfloat"
+instance SymbParam SCDouble where symbType _ = "cdouble"
+
+instance SymbParam a => Fresh (Symbolic a) where
+  fresh = freshSExpr
+
+instance SymbParam a => Num (Symbolic a) where
+  fromInteger = Symbolic . fromInteger
+  x + y = symbFun "+" [x, y]
+  x - y = symbFun "-" [x, y]
+  x * y = symbFun "*" [x, y]
+  abs = smtAbs
+  signum = smtSignum
+
+instance SymbParam a => Fractional (Symbolic a) where
+  fromRational = Symbolic . fromRational
+  x / y = symbFun "/" [x, y]
+
+symbFun :: SymbParam a => String -> [Symbolic a] -> Symbolic a
+symbFun name (args :: [Symbolic a]) =
+  fromSMT $
+  fun (symbType (undefined :: a) ++ "-" ++ name)
+    (map toSMT args)
+
+fromComplex :: forall a b. (RealFloat a, SymbParam b) => Complex a -> Symbolic b
+fromComplex x =
+  symbFun "+i" [real, imag]
+  where
+    real = Symbolic (fromRational (toRational (realPart x)))
+    imag = Symbolic (fromRational (toRational (imagPart x)))
+
+declareSymbArith :: SymbParam a => a -> SMT ()
+declareSymbArith (_ :: a) = do
+  let name x = symbType (undefined :: a) ++ "-" ++ x
+  declareFun (name "+")  [tReal, tReal] tReal
+  declareFun (name "-")  [tReal, tReal] tReal
+  declareFun (name "*")  [tReal, tReal] tReal
+  declareFun (name "/")  [tReal, tReal] tReal
+  return ()
+
+declareFeldsparGlobals :: SMT ()
+declareFeldsparGlobals = do
+  declareSymbArith (undefined :: SFloat)
+  declareSymbArith (undefined :: SDouble)
+  declareSymbArith (undefined :: SCFloat)
+  declareSymbArith (undefined :: SCDouble)
+  declareFun ("cfloat-+i")  [tReal, tReal] tReal
+  declareFun ("cdouble-+i") [tReal, tReal] tReal
+  return ()

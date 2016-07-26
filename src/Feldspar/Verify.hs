@@ -5,6 +5,7 @@ import Feldspar.Run.Compile
 import Feldspar.Run
 import qualified Language.Embedded.Verify as Verify
 import Feldspar.Verify.Representation
+import Control.Monad.Trans
 
 verify :: MonadRun m => m () -> IO ()
 verify = verified Imp.icompile
@@ -14,11 +15,9 @@ verified = verified' def { compilerAssertions = allExcept [] }
 
 verified' :: MonadRun m => CompilerOpts -> (ProgC () -> IO a) -> m () -> IO a
 verified' opts backend prog = do
-  (prog', warns) <-
-    Verify.runVerify .
-    Verify.verify .
-    translate (Env mempty opts) .
-    liftRun $ prog
+  (prog', warns) <- Verify.runVerify . Verify.chattily $ do
+    lift declareFeldsparGlobals
+    Verify.verify (translate (Env mempty opts) (liftRun prog))
   backend prog' <*
     unless (null warns) (do
       putStrLn "Warnings:"
