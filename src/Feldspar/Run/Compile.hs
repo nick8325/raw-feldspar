@@ -323,6 +323,8 @@ instance (Imp.ControlCMD Oper.:<: instr) =>
         cs <- asks (compilerAssertions . envOptions)
         when (cs `includes` c) $
           (reexp cond >>= lift . flip Imp.assert msg)
+    reexpressInstrEnv reexp (Hint exp) =
+      reexp exp >>= lift . Imp.hint
 
 
 

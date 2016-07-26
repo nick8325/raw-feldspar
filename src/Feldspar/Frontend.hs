@@ -534,7 +534,18 @@ guardValLabel :: Syntax a
     -> a
 guardValLabel c cond msg = sugarSymFeld (GuardVal c msg) cond
 
+-- | Give a value which may be used in an invariant.
+hintVal :: (Syntax a, Syntax b)
+    => a -- ^ Value to be used in invariant
+    -> b -- ^ Result value
+    -> b
+hintVal x y = sugarSymFeld HintVal x y
 
+-- | Hint that a value may be used in an invariant.
+hintId :: Syntax a
+    => a
+    -> a
+hintId x = hintVal x x
 
 ----------------------------------------
 -- ** Unsafe operations
@@ -814,3 +825,9 @@ assertLabel :: MonadComp m
 assertLabel c cond msg =
     liftComp $ Comp $ Oper.singleInj $ Assert c cond msg
 
+-- | Hint that a value may be used in an invariant
+hint :: (MonadComp m, Syntax a, PrimType (Internal a))
+  => a -- ^ Value to be used in invariant
+  -> m ()
+hint exp =
+    liftComp $ Comp $ Oper.singleInj $ Hint (resugar exp)

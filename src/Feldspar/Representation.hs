@@ -193,6 +193,10 @@ data ExtraPrimitive sig
     GuardVal ::
         AssertionLabel -> String -> ExtraPrimitive (Bool :-> a :-> Full a)
 
+    -- Hint that a value may appear in an invariant
+    HintVal ::
+        ExtraPrimitive (a :-> b :-> Full b)
+
 instance Eval ExtraPrimitive
   where
     evalSym DivBalanced = \a b -> if a `mod` b /= 0
@@ -200,6 +204,7 @@ instance Eval ExtraPrimitive
       else div a b
     evalSym (GuardVal _ msg) = \cond a ->
         if cond then a else error $ "Feldspar assertion failure: " ++ msg
+    evalSym HintVal = \_ a -> a
 
 instance EvalEnv ExtraPrimitive env
 
@@ -207,10 +212,12 @@ instance Equality ExtraPrimitive
   where
     equal DivBalanced    DivBalanced    = True
     equal (GuardVal _ _) (GuardVal _ _) = True
+    equal HintVal        HintVal        = True
     equal _ _ = False
 
     hash DivBalanced    = hashInt 1
     hash (GuardVal _ _) = hashInt 2
+    hash HintVal        = hashInt 3
 
 instance StringTree ExtraPrimitive
 
@@ -354,19 +361,27 @@ data AssertCMD fs a
         -> String
         -> AssertCMD (Operational.Param3 prog exp pred) ()
 
+    Hint
+        :: pred a
+        => exp a
+        -> AssertCMD (Operational.Param3 prog exp pred) ()
+
 instance Operational.HFunctor AssertCMD
   where
     hfmap _ (Assert c cond msg) = Assert c cond msg
+    hfmap _ (Hint exp)          = Hint exp
 
 instance Operational.HBifunctor AssertCMD
   where
     hbimap _ g (Assert c cond msg) = Assert c (g cond) msg
+    hbimap _ g (Hint exp)          = Hint (g exp)
 
 instance Operational.InterpBi AssertCMD IO (Operational.Param1 PrimType')
   where
     interpBi (Assert _ cond msg) = do
         cond' <- cond
         unless cond' $ error $ "Assertion failed: " ++ msg
+    interpBi (Hint _)  = return ()
 
 type CompCMD
   =               Imp.RefCMD
