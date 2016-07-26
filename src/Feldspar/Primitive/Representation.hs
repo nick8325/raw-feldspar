@@ -243,7 +243,7 @@ data Primitive sig
     Imag      :: (PrimType' a, PrimType' (Complex a))              => Primitive (Complex a :-> Full a)
     Magnitude :: (RealFloat a, PrimType' a, PrimType' (Complex a)) => Primitive (Complex a :-> Full a)
     Phase     :: (RealFloat a, PrimType' a, PrimType' (Complex a)) => Primitive (Complex a :-> Full a)
-    Conjugate :: (Num a, PrimType' (Complex a))                    => Primitive (Complex a :-> Full (Complex a))
+    Conjugate :: (Num a, PrimType' a, PrimType' (Complex a))       => Primitive (Complex a :-> Full (Complex a))
 
     I2N   :: (Integral a, Num b, PrimType' a, PrimType' b)      => Primitive (a :-> Full b)
     I2B   :: (Integral a, PrimType' a)                          => Primitive (a :-> Full Bool)

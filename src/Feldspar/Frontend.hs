@@ -255,7 +255,7 @@ phase :: (RealFloat a, PrimType a, PrimType (Complex a)) =>
 phase = sugarSymFeld Phase
 
 -- | Complex conjugate
-conjugate :: (RealFloat a, PrimType (Complex a)) =>
+conjugate :: (RealFloat a, PrimType a, PrimType (Complex a)) =>
     Data (Complex a) -> Data (Complex a)
 conjugate = sugarSymFeld Conjugate
   -- `RealFloat` could be replaced by `Num` here, but it seems more consistent
