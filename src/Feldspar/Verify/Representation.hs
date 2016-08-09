@@ -417,9 +417,8 @@ primEval ShiftR (x :* (y :: ASTF PrimDomain b) :* Nil)
     y <- eval (Prim y)
     return (shiftR x (i2n y))
 primEval (ArrIx (IArrComp name :: IArr Index b)) (i :* Nil) = do
-  arr <- peek name :: Verify (ArrBinding Prim Index b)
-  i   <- eval (Prim i)
-  return (fromSMT (select (toSMT (arr_value arr)) (toSMT i)))
+  i <- eval (Prim i)
+  arrIx name i
 primEval Cond (cond :* x :* y :* Nil) =
   liftM3 smtIte (fmap toSMT (eval (Prim cond))) (eval (Prim x)) (eval (Prim y))
 primEval exp _ = error ("Unimplemented: " ++ show exp)
