@@ -535,14 +535,14 @@ guardValLabel :: Syntax a
 guardValLabel c cond msg = sugarSymFeld (GuardVal c msg) cond
 
 -- | Give a value which may be used in an invariant.
-hintVal :: (Syntax a, Syntax b)
+hintVal :: (Syntax a, Syntax b, PrimType' (Internal a))
     => a -- ^ Value to be used in invariant
     -> b -- ^ Result value
     -> b
 hintVal x y = sugarSymFeld HintVal x y
 
 -- | Hint that a value may be used in an invariant.
-hintId :: Syntax a
+hintId :: (Syntax a, PrimType' (Internal a))
     => a
     -> a
 hintId x = hintVal x x

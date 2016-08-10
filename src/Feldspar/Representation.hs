@@ -194,7 +194,7 @@ data ExtraPrimitive sig
         AssertionLabel -> String -> ExtraPrimitive (Bool :-> a :-> Full a)
 
     -- Hint that a value may appear in an invariant
-    HintVal ::
+    HintVal :: PrimType' a =>
         ExtraPrimitive (a :-> b :-> Full b)
 
 instance Eval ExtraPrimitive

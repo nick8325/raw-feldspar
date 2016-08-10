@@ -273,6 +273,11 @@ translateExp a = do
                cond' <- extractSingle <$> goAST cond
                lift $ assert cond' msg
              goAST a
+    go t guard (cond :* a :* Nil)
+        | Just HintVal <- prj guard
+        = do cond' <- extractSingle <$> goAST cond
+             lift $ hint cond'
+             goAST a
     go t loop (len :* init :* (lami :$ (lams :$ body)) :* Nil)
         | Just ForLoop   <- prj loop
         , Just (LamT iv) <- prj lami
