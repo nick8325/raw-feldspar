@@ -34,7 +34,6 @@ library
     Feldspar.Sugar
     Feldspar.Frontend
     Feldspar.Optimize
-    Feldspar.Storable
     Feldspar
     Feldspar.Run.Representation
     Feldspar.Run.Concurrent
@@ -50,6 +49,7 @@ library
     Feldspar.Verify.Representation
     Feldspar.Data.Array
     Feldspar.Data.Vector
+    Feldspar.Data.Buffered
     Feldspar.Data.Option
     Feldspar.Data.Validated
 
@@ -66,11 +66,13 @@ library
     DeriveTraversable
     FlexibleContexts
     FlexibleInstances
+    FunctionalDependencies
     GADTs
     GeneralizedNewtypeDeriving
     MultiParamTypeClasses
     PatternSynonyms
     Rank2Types
+    RecordWildCards
     ScopedTypeVariables
     StandaloneDeriving
     TypeFamilies

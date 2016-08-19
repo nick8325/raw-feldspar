@@ -37,12 +37,16 @@ import Feldspar.Sugar ()
 -- ** General constructs
 ----------------------------------------
 
--- | Explicit sharing
+-- | Force evaluation of a value and share the result. Note that due to common
+-- sub-expression elimination, this function is rarely needed in practice.
 share :: (Syntax a, Syntax b)
     => a         -- ^ Value to share
     -> (a -> b)  -- ^ Body in which to share the value
     -> b
 share = shareTag ""
+  -- Explicit sharing can be useful e.g. when the value to share contains a
+  -- function or when the code motion algorithm for some reason doesn't work
+  -- find opportunities for sharing.
 
 -- | Explicit tagged sharing
 shareTag :: (Syntax a, Syntax b)
@@ -831,3 +835,17 @@ hint :: (MonadComp m, Syntax a, PrimType (Internal a))
   -> m ()
 hint exp =
     liftComp $ Comp $ Oper.singleInj $ Hint (resugar exp)
+
+
+----------------------------------------
+-- ** Misc.
+----------------------------------------
+
+-- | Force evaluation of a value and share the result (monadic version of
+-- 'share')
+shareM :: (Syntax a, MonadComp m) => a -> m a
+shareM = initRef >=> unsafeFreezeRef
+  -- This function is more commonly needed than `share`, since code motion
+  -- doesn't work across monadic binds.
+
+>>>>>>> 3e380f41349bbe985cd3a4527b103c28c670b3de
