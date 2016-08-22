@@ -112,15 +112,26 @@ class (MarshalHaskell (HaskellRep a)) => MarshalFeld a
     -- | The Haskell representation of a Feldspar value
     type HaskellRep a
 
-    -- | Serialize a Feldspar value to @stdout@
-    fromFeld :: a -> Run ()
-    default fromFeld :: (PrimType b, Formattable b, a ~ Data b) => a -> Run ()
-    fromFeld i = fput stdout "" i ""
+    -- | Serialize a Feldspar value to a handle
+    fwrite :: Handle -> a -> Run ()
 
-    -- | Deserialize a Feldspar value from @stdin@
-    toFeld :: Run a
-    default toFeld :: (PrimType b, Formattable b, a ~ Data b) => Run a
-    toFeld = fget stdin
+    default fwrite :: (PrimType b, Formattable b, a ~ Data b) =>
+        Handle -> a -> Run ()
+    fwrite hdl i = fput hdl "" i ""
+
+    -- | Deserialize a Feldspar value from a handle
+    fread :: Handle -> Run a
+
+    default fread :: (PrimType b, Formattable b, a ~ Data b) => Handle -> Run a
+    fread = fget
+
+-- | Write a value to @stdout@
+writeStd :: MarshalFeld a => a -> Run ()
+writeStd = fwrite stdout
+
+-- | Read a value from @stdin@
+readStd :: MarshalFeld a => Run a
+readStd = fread stdin
 
 instance MarshalFeld (Data Int8)   where type HaskellRep (Data Int8)   = Int8
 instance MarshalFeld (Data Int16)  where type HaskellRep (Data Int16)  = Int16
@@ -136,50 +147,57 @@ instance MarshalFeld (Data Double) where type HaskellRep (Data Double) = Double
 instance MarshalFeld (Data (Complex Float))
   where
     type HaskellRep (Data (Complex Float)) = Complex Float
-    fromFeld c = fromFeld (realPart c, imagPart c)
-    toFeld = fmap (uncurry complex) toFeld
+    fwrite hdl c = fwrite hdl (realPart c, imagPart c)
+    fread = fmap (uncurry complex) . fread
 
 instance MarshalFeld (Data (Complex Double))
   where
     type HaskellRep (Data (Complex Double)) = Complex Double
-    fromFeld c = fromFeld (realPart c, imagPart c)
-    toFeld = fmap (uncurry complex) toFeld
+    fwrite hdl c = fwrite hdl (realPart c, imagPart c)
+    fread = fmap (uncurry complex) . fread
 
 instance (MarshalFeld a, MarshalFeld b) => MarshalFeld (a,b)
   where
     type HaskellRep (a,b) = (HaskellRep a, HaskellRep b)
-    fromFeld (a,b) = fromFeld a >> printf " " >> fromFeld b
-    toFeld = (,) <$> toFeld <*> toFeld
+    fwrite hdl (a,b) = fwrite hdl a >> fprintf hdl " " >> fwrite hdl b
+    fread hdl = (,) <$> fread hdl <*> fread hdl
 
 instance (MarshalFeld a, MarshalFeld b, MarshalFeld c) => MarshalFeld (a,b,c)
   where
     type HaskellRep (a,b,c) = (HaskellRep a, HaskellRep b, HaskellRep c)
-    fromFeld (a,b,c) = fromFeld a >> printf " " >> fromFeld b >> printf " " >> fromFeld c
-    toFeld = (,,) <$> toFeld <*> toFeld <*> toFeld
+    fwrite hdl (a,b,c)
+        =  fwrite hdl a >> fprintf hdl " "
+        >> fwrite hdl b >> fprintf hdl " "
+        >> fwrite hdl c
+    fread hdl = (,,) <$> fread hdl <*> fread hdl <*> fread hdl
 
 instance (MarshalFeld a, MarshalFeld b, MarshalFeld c, MarshalFeld d) => MarshalFeld (a,b,c,d)
   where
     type HaskellRep (a,b,c,d) = (HaskellRep a, HaskellRep b, HaskellRep c, HaskellRep d)
-    fromFeld (a,b,c,d) = fromFeld a >> printf " " >> fromFeld b >> printf " " >> fromFeld c >> printf " " >> fromFeld d
-    toFeld = (,,,) <$> toFeld <*> toFeld <*> toFeld <*> toFeld
+    fwrite hdl (a,b,c,d)
+        =  fwrite hdl a >> fprintf hdl " "
+        >> fwrite hdl b >> fprintf hdl " "
+        >> fwrite hdl c >> fprintf hdl " "
+        >> fwrite hdl d
+    fread hdl = (,,,) <$> fread hdl <*> fread hdl <*> fread hdl <*> fread hdl
 
 instance (MarshalHaskell a, MarshalFeld (Data a), Type a) => MarshalFeld (Arr a)
   where
     type HaskellRep (Arr a) = [a]
 
-    fromFeld arr = do
+    fwrite hdl arr = do
         len <- shareM $ length arr
-        fput stdout "" len " "
+        fput hdl "" len " "
         for (0,1,Excl len) $ \i -> do
             a <- getArr i arr
-            fromFeld (a :: Data a)
-            printf " "
+            fwrite hdl (a :: Data a)
+            fprintf hdl " "
 
-    toFeld = do
-        len <- fget stdin
+    fread hdl = do
+        len <- fget hdl
         arr <- newArr len
         for (0,1,Excl len) $ \i -> do
-            a <- toFeld
+            a <- fread hdl
             setArr i (a :: Data a) arr
         return arr
 
@@ -188,25 +206,25 @@ instance (MarshalHaskell a, MarshalFeld (Data a), Type a) =>
   where
     type HaskellRep (IArr a) = [a]
 
-    fromFeld arr = do
+    fwrite hdl arr = do
         len <- shareM $ length arr
-        fput stdout "" len " "
+        fput hdl "" len " "
         for (0,1,Excl len) $ \i -> do
-            fromFeld (arrIx arr i :: Data a)
-            printf " "
+            fwrite hdl (arrIx arr i :: Data a)
+            fprintf hdl " "
 
-    toFeld = do
-        len <- fget stdin
+    fread hdl = do
+        len <- fget hdl
         arr <- newArr len
         for (0,1,Excl len) $ \i -> do
-            a <- toFeld
+            a <- fread hdl
             setArr i (a :: Data a) arr
         iarr <- unsafeFreezeArr arr
         return iarr
 
 -- | Connect a Feldspar function between serializable types to @stdin@/@stdout@
 connectStdIO :: (MarshalFeld a, MarshalFeld b) => (a -> Run b) -> Run ()
-connectStdIO f = (toFeld >>= f) >>= fromFeld
+connectStdIO f = (readStd >>= f) >>= writeStd
 
 -- | A version of 'marshalled' that takes 'ExternalCompilerOpts' as additional
 -- argument
