@@ -847,5 +847,3 @@ shareM :: (Syntax a, MonadComp m) => a -> m a
 shareM = initRef >=> unsafeFreezeRef
   -- This function is more commonly needed than `share`, since code motion
   -- doesn't work across monadic binds.
-
->>>>>>> 3e380f41349bbe985cd3a4527b103c28c670b3de
