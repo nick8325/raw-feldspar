@@ -2,7 +2,9 @@
 module Feldspar.Verify.Representation where
 
 import Language.Embedded.Verify hiding (ite)
+import Language.Embedded.Verify.FirstOrder
 import Language.Embedded.Verify.SMT hiding (Bool, abs, Real, real)
+import Language.Embedded.Expression
 import qualified Language.Embedded.Verify.SMT as SMT
 import Feldspar.Primitive.Representation
 import Language.Syntactic
@@ -598,3 +600,29 @@ declareFeldsparGlobals = do
   declareSymbArith (undefined :: SDouble)
   declareSymbComplex (undefined :: SCFloat)
   declareSymbComplex (undefined :: SCDouble)
+
+instance Substitute Prim where
+  type SubstPred Prim = PrimType'
+
+  subst sub (Prim exp) = Prim (everywhereUp f exp)
+    where
+      f :: ASTF PrimDomain a -> ASTF PrimDomain a
+      f (Sym (FreeVar x :&: ty)) =
+        case lookupSubst sub (ValComp x) of
+          ValComp y -> Sym (FreeVar y :&: ty)
+          ValRun  z -> Sym (Lit z :&: ty)
+      f (Sym (ArrIx iarr :&: ty) :$ i) =
+        Sym (ArrIx iarr' :&: ty) :$ i
+        where
+          iarr' = lookupSubst sub iarr
+      f x = x
+
+instance TypeablePred PrimType' where
+  witnessTypeable Dict = Dict
+
+primSubst ::
+  forall a.
+  (PrimType' (DenResult a)) =>
+  Subst -> Primitive a -> Args (AST PrimDomain) a ->
+  ASTF PrimDomain a
+primSubst sub (FreeVar x) _ = undefined
