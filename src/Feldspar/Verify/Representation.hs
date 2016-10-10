@@ -1,7 +1,7 @@
 -- Feldspar-specific verification bits (expression evaluation).
 module Feldspar.Verify.Representation where
 
-import Language.Embedded.Verify hiding (ite)
+import Language.Embedded.Verify hiding (ite, phase)
 import Language.Embedded.Verify.FirstOrder
 import Language.Embedded.Verify.SMT hiding (Bool, abs, Real, real)
 import Language.Embedded.Expression
