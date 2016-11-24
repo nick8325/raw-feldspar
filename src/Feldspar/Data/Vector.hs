@@ -163,48 +163,16 @@ import qualified Language.Embedded.Concurrent as Imp
 
 
 
-tManifest :: Manifest a -> Manifest a
-tManifest = id
-  -- TODO Use patch combinators
-
-tManifest2 :: Manifest2 a -> Manifest2 a
-tManifest2 = id
-  -- TODO Use patch combinators
-
-
-
---------------------------------------------------------------------------------
--- * Generic operations
---------------------------------------------------------------------------------
-
-class Finite2 a
-  where
-    -- | Get the extent of a 2-dimensional vector
-    --
-    -- It must hold that:
-    --
-    -- @
-    -- `numRows` == `length`
-    -- @
-    extent2
-        :: a
-        -> (Data Length, Data Length)  -- ^ @(rows,columns)@
-
--- | Get the number of rows of a two-dimensional structure
+-- This library has been inspired by the vector library in feldspar-language:
+-- <https://github.com/Feldspar/feldspar-language/blob/master/src/Feldspar/Vector.hs>
 --
--- @
--- `numRows` == `length`
--- @
-numRows :: Finite2 a => a -> Data Length
-numRows = fst . extent2
-
--- | Get the number of columns of a two-dimensional structure
-numCols :: Finite2 a => a -> Data Length
-numCols = snd . extent2
-
-instance Finite2 (Nest a)
-  where
-    extent2 (Nest r c _) = (r,c)
+-- The general idea of pull and push vectors is described in
+-- "Combining deep and shallow embedding of domain-specific languages"
+-- <http://dx.doi.org/10.1016/j.cl.2015.07.003>.
+--
+-- Push arrays were originally introduced in
+-- "Expressive array constructs in an embedded GPU kernel programming language"
+-- <http://dx.doi.org/10.1145/2103736.2103740>.
 
 
 
@@ -213,55 +181,27 @@ instance Finite2 (Nest a)
 --------------------------------------------------------------------------------
 
 -- | A 1-dimensional vector with a concrete representation in memory
-newtype Manifest a = Manifest {unManifest :: IArr (Internal a)}
+--
+-- There are two main reasons to use 'Manifest' when possible instead of `Pull`:
+--
+-- * The operations of the 'Manifestable' class are more efficient for
+--   'Manifest'. They either result in a no-op or an efficient memory-copy
+--   (instead of a copying loop).
+--
+-- * 'Manifest' can be freely converted to/from a 2-dimensional structure using
+--   'nest' and 'unnest'. Note that the representation of 'Manifest2' is
+--   @`Nest` (`Manifest` a)@.
+type Manifest = IArr
 
 -- | 'Manifest' vector specialized to 'Data' elements
-type DManifest a = Manifest (Data a)
-
-instance Syntax a => Indexed (Manifest a)
-  where
-    type IndexedElem (Manifest a) = a
-    Manifest arr ! i = sugar (arr!i)
-
-instance Finite (Manifest a) where length = length . unManifest
+type DManifest a = DIArr a
 
 -- | Treated as a row vector
 instance Finite2 (Manifest a) where extent2 v = (1, length v)
 
-instance Slicable (Manifest a)
-  where
-    slice from n = Manifest . slice from n . unManifest
-
-instance
-    ( MarshalHaskell (Internal a)
-    , MarshalFeld (Data (Internal a))
-    , Syntax a
-    ) =>
-      MarshalFeld (Manifest a)
-  where
-    type HaskellRep (Manifest a) = HaskellRep (IArr (Internal a))
-    fwrite hdl = fwrite hdl . unManifest
-    fread hdl  = Manifest <$> fread hdl
-
--- | Freeze a mutable array to a 'Manifest' vector without making a copy. This
--- is generally only safe if the the mutable array is not updated as long as the
--- vector is alive.
-unsafeFreezeToManifest :: (Syntax a, MonadComp m) =>
-    Data Length -> Arr (Internal a) -> m (Manifest a)
-unsafeFreezeToManifest l = fmap (Manifest . slice 0 l) . unsafeFreezeArr
-
--- | Make a constant 'Manifest' vector
-constManifest :: (Syntax a, PrimType (Internal a), MonadComp m) =>
-    [Internal a] -> m (Manifest a)
-constManifest as =
-    unsafeFreezeToManifest (value $ genericLength as) =<< initArr as
-
 -- | Make a 'Manifest' vector from a list of values
-listManifest :: forall m a . (Syntax a, MonadComp m) => [a] -> m (Manifest a)
-listManifest
-    = manifestFresh
-    . (id :: Push m a -> Push m a)
-    . listPush
+listManifest :: (Syntax a, MonadComp m) => [a] -> m (Manifest a)
+listManifest = manifestFresh . listPush
 
 
 
@@ -270,45 +210,10 @@ listManifest
 --------------------------------------------------------------------------------
 
 -- | A 2-dimensional vector with a concrete representation in memory
-newtype Manifest2 a = Manifest2 {unManifest2 :: Nest (Manifest a)}
+type Manifest2 a = Nest (Manifest a)
 
 -- | 'Manifest2' vector specialized to 'Data' elements
 type DManifest2 a = Manifest2 (Data a)
-
--- | Indexing the rows
-instance Syntax a => Indexed (Manifest2 a)
-  where
-    type IndexedElem (Manifest2 a) = Manifest a
-    Manifest2 arr ! i = arr!i
-
--- | 'length' gives number of rows
-instance Finite (Manifest2 a) where length = length . unManifest2
-
-instance Finite2 (Manifest2 a) where extent2 = extent2 . unManifest2
-
--- | Take a slice of the rows
-instance Slicable (Manifest2 a)
-  where
-    slice from n = Manifest2 . slice from n . unManifest2
-
-instance
-    ( Syntax a
-    , MarshalHaskell (Internal a)
-    , MarshalFeld (Data (Internal a))
-    ) =>
-      MarshalFeld (Manifest2 a)
-  where
-    type HaskellRep (Manifest2 a) = HaskellRep (Nest (Manifest a))
-    fwrite hdl = fwrite hdl . unManifest2
-    fread hdl  = Manifest2 <$> fread hdl
-
--- | Expose the representation of 'Manifest2'
-openManifest2 :: Manifest2 a -> Nest (Manifest a)
-openManifest2 = unManifest2
-
--- | Hide the representation of 'Manifest2'
-closeManifest2 :: Nest (Manifest a) -> Manifest2 a
-closeManifest2 = Manifest2
 
 
 
@@ -363,36 +268,16 @@ instance Slicable (Pull a)
   where
     slice from n = take n . drop from
 
--- instance Syntax a => Storable (Pull a)
---   where
---     type StoreRep (Pull a)  = (Ref Length, Arr (Internal a))
---     type StoreSize (Pull a) = Data Length
---     newStoreRep _        = newStoreRep (Proxy :: Proxy (Manifest a))
---     readStoreRep         = fmap fromValue . readStoreRep
---     unsafeFreezeStoreRep = fmap fromValue . unsafeFreezeStoreRep
---     copyStoreRep _       = copyStoreRep (Proxy :: Proxy (Manifest a))
-
---     writeStoreRep (r,arr) v = do
---         setRef r $ length v
---         memorizeStore arr Outer $ fmap desugar v
-
---     initStoreRep v = do
---         r   <- initRef $ length v
---         arr <- newArr $ length v
---         let s = (r,arr)
---         writeStoreRep s v
---         return s
-
 instance
     ( Syntax a
     , MarshalHaskell (Internal a)
-    , MarshalFeld (Data (Internal a))
+    , MarshalFeld a
     ) =>
       MarshalFeld (Pull a)
   where
     type HaskellRep (Pull a) = HaskellRep (Manifest a)
-    fwrite hdl = fwrite hdl . (id :: Push Run a -> Push Run a) . toPush
-    fread hdl  = toPull . tManifest <$> fread hdl
+    fwrite hdl = fwrite hdl . toSeq
+    fread hdl  = (toPull :: Manifest a -> _) <$> fread hdl
 
 data VecChanSizeSpec lenSpec = VecChanSizeSpec (Data Length) lenSpec
 
@@ -400,7 +285,7 @@ ofLength :: Data Length -> lenSpec -> VecChanSizeSpec lenSpec
 ofLength = VecChanSizeSpec
 
 instance ( Syntax a, BulkTransferable a
-         , ContainerType a ~ Arr (Internal a)
+         , ContainerType a ~ Arr a
          ) => Transferable (Pull a)
   where
     type SizeSpec (Pull a) = VecChanSizeSpec (SizeSpec a)
@@ -412,14 +297,56 @@ instance ( Syntax a, BulkTransferable a
         len :: Data Length <- untypedReadChan c
         arr <- newArr len
         untypedReadChanBuf (Proxy :: Proxy a) c 0 len arr
-        toPull <$> unsafeFreezeToManifest len arr
+        toPull <$> unsafeFreezeArr arr
     untypedWriteChan c v = do
-        arr <- newArr len
+        -- TODO: can we avoid an array copy here if v is already manifest?
+        arr <- unsafeThawArr =<< manifestFresh v
         untypedWriteChan c len
         untypedWriteChanBuf (Proxy :: Proxy a) c 0 len arr
       where
         len = length v
  -- TODO Make instances for other vector types
+
+instance ( Syntax a, BulkTransferable a
+         , ContainerType a ~ Arr a
+         ) => Transferable (IArr a)
+  where
+    type SizeSpec (IArr a) = VecChanSizeSpec (SizeSpec a)
+    calcChanSize _ (VecChanSizeSpec n m) =
+        let hsz = n `Imp.timesSizeOf` (Proxy :: Proxy Length)
+            bsz = calcChanSize (Proxy :: Proxy a) m
+        in  hsz `Imp.plusSize` (n `Imp.timesSize` bsz)
+    untypedReadChan c = do
+        len :: Data Length <- untypedReadChan c
+        arr <- newArr len
+        untypedReadChanBuf (Proxy :: Proxy a) c 0 len arr
+        unsafeFreezeArr arr
+    untypedWriteChan c v = do
+        arr <- unsafeThawArr v
+        untypedWriteChan c len
+        untypedWriteChanBuf (Proxy :: Proxy a) c 0 len arr
+      where
+        len = length v
+
+instance ( Syntax a, BulkTransferable a
+         , ContainerType a ~ Arr a
+         ) => Transferable (Arr a)
+  where
+    type SizeSpec (Arr a) = VecChanSizeSpec (SizeSpec a)
+    calcChanSize _ (VecChanSizeSpec n m) =
+        let hsz = n `Imp.timesSizeOf` (Proxy :: Proxy Length)
+            bsz = calcChanSize (Proxy :: Proxy a) m
+        in  hsz `Imp.plusSize` (n `Imp.timesSize` bsz)
+    untypedReadChan c = do
+        len :: Data Length <- untypedReadChan c
+        arr <- newArr len
+        untypedReadChanBuf (Proxy :: Proxy a) c 0 len arr
+        pure arr
+    untypedWriteChan c v = do
+        untypedWriteChan c len
+        untypedWriteChanBuf (Proxy :: Proxy a) c 0 len v
+      where
+        len = length v
 
 -- | Data structures that are 'Pull'-like (i.e. support '!' and 'length')
 class    (Indexed vec, Finite vec, IndexedElem vec ~ a) => Pully vec a
@@ -558,13 +485,13 @@ instance Slicable (Pull2 a)
 instance
     ( Syntax a
     , MarshalHaskell (Internal a)
-    , MarshalFeld (Data (Internal a))
+    , MarshalFeld a
     ) =>
       MarshalFeld (Pull2 a)
   where
     type HaskellRep (Pull2 a) = HaskellRep (Manifest2 a)
-    fwrite hdl = fwrite hdl . (id :: Push2 Run a -> Push2 Run a) . toPush2
-    fread hdl  = toPull2 . tManifest2 <$> fread hdl
+    fwrite hdl = fwrite hdl . toPush2
+    fread hdl  = (toPull2 :: Manifest2 a -> _) <$> fread hdl
 
 -- | Vectors that can be converted to 'Pull2'
 class Pully2 vec a | vec -> a
@@ -577,9 +504,12 @@ instance Syntax a => Pully2 (Manifest a) a
   where
     toPull2 = toPull2 . toPull
 
-instance Syntax a => Pully2 (Manifest2 a) a
+instance (Indexed vec, Slicable vec, IndexedElem vec ~ a, Syntax a) =>
+    Pully2 (Nest vec) a
   where
-    toPull2 (Manifest2 arr@(Nest r c _)) = Pull2 r c $ \i j -> arr!i!j
+    toPull2 arr = Pull2 r c $ \i j -> arr!i!j
+      where
+        (r,c) = extent2 arr
 
 -- | Convert to a 'Pull2' with a single row
 instance Pully2 (Pull a) a
@@ -735,14 +665,14 @@ instance Finite2 (Push m a) where extent2 v = (1, length v)
 instance
     ( Syntax a
     , MarshalHaskell (Internal a)
-    , MarshalFeld (Data (Internal a))
+    , MarshalFeld a
     , m ~ Run
     ) =>
       MarshalFeld (Push m a)
   where
     type HaskellRep (Push m a) = HaskellRep (Manifest a)
     fwrite hdl = fwrite hdl <=< manifestFresh
-    fread hdl  = toPush . tManifest <$> fread hdl
+    fread hdl  = toPush . (id :: Manifest _ -> _) <$> fread hdl
 
 -- | Vectors that can be converted to 'Push'
 class Pushy m vec a | vec -> a
@@ -767,6 +697,14 @@ instance MonadComp m => Pushy m (Pull a) a
       where
         len = length vec
 
+instance (MonadComp m1, m1 ~ m2) => Pushy m1 (Seq m2 a) a
+  where
+    toPush (Seq len init) = Push len $ \write -> do
+      next <- init
+      for (0,1,Excl len) $ \i -> do
+        a <- next i
+        write i a
+
 -- | Dump the contents of a 'Push' vector
 dumpPush
     :: Push m a                   -- ^ Vector to dump
@@ -782,7 +720,7 @@ dumpPush (Push _ dump) = dump
 
 -- | Create a 'Push' vector from a list of elements
 listPush :: Monad m => [a] -> Push m a
-listPush as = Push 2 $ \write ->
+listPush as = Push (value $ genericLength as) $ \write ->
     sequence_ [write (value i) a | (i,a) <- Prelude.zip [0..] as]
 
 -- | Append two vectors to make a 'Push' vector
@@ -822,7 +760,7 @@ flatten vec = Push (r*c) $ \write ->
 -- | Embed the effects in the elements into the internal effects of a 'Push'
 -- vector
 --
--- __WARNING:__ This function should be used with care, since is allows hiding
+-- __WARNING:__ This function should be used with care, since it allows hiding
 -- effects inside a vector. These effects may be (seemingly) randomly
 -- interleaved with other effects when the vector is used.
 --
@@ -886,14 +824,14 @@ instance Finite2 (Push2 m a)
 instance
     ( Syntax a
     , MarshalHaskell (Internal a)
-    , MarshalFeld (Data (Internal a))
+    , MarshalFeld a
     , m ~ Run
     ) =>
       MarshalFeld (Push2 m a)
   where
     type HaskellRep (Push2 m a) = HaskellRep (Manifest2 a)
     fwrite hdl = fwrite hdl <=< manifestFresh2
-    fread hdl  = toPush2 . tManifest2 <$> fread hdl
+    fread hdl  = toPush2 . (id :: Manifest2 _ -> _) <$> fread hdl
 
 -- | Vectors that can be converted to 'Push2'
 class Pushy2 m vec a | vec -> a
@@ -992,128 +930,252 @@ transposePush vec = Push2 c r $ \write ->
 
 
 --------------------------------------------------------------------------------
+-- * Sequential vectors
+--------------------------------------------------------------------------------
+
+-- | Finite sequential vector
+--
+-- Users interested in infinite streams are referred to the library:
+-- <https://github.com/emilaxelsson/feldspar-synch>
+data Seq m a
+  where
+    Seq :: Data Length -> m (Data Index -> m a) -> Seq m a
+
+-- | 'Seq' vector specialized to 'Data' elements
+type DSeq m a = Seq m (Data a)
+
+instance Monad m => Functor (Seq m)
+  where
+    fmap f (Seq len init) = Seq len $ do
+      next <- init
+      return $ fmap f . next
+
+instance Finite (Seq m a)
+  where
+    length (Seq len _) = len
+
+instance
+    ( Syntax a
+    , MarshalHaskell (Internal a)
+    , MarshalFeld a
+    , m ~ Run
+    ) =>
+      MarshalFeld (Seq m a)
+  where
+    type HaskellRep (Seq m a) = HaskellRep (Manifest a)
+
+    fwrite hdl (Seq len init) = do
+      next <- init
+      fwrite hdl len >> printf " "
+      for (0,1,Excl len) $ \i -> next i >>= fwrite hdl >> printf " "
+
+    fread hdl = toSeq . (id :: Manifest _ -> _) <$> fread hdl
+      -- Need to go through a temporary array to avoid embedding side-effects in
+      -- the resulting vector. E.g. we don't want to duplicate the reads if the
+      -- vector is duplicated.
+
+-- | Vectors that can be converted to 'Seq'
+class Seqy m vec a | vec -> a
+  where
+    -- | Convert a vector to 'Seq'
+    toSeq :: vec -> Seq m a
+
+-- | A version of 'toSeq' that constrains the @m@ argument of 'Seq' to that of
+-- the monad in which the result is returned. This can be a convenient way to
+-- avoid unresolved overloading.
+toSeqM :: (Seqy m vec a, Monad m) => vec -> m (Seq m a)
+toSeqM = return . toSeq
+
+instance (Syntax a, MonadComp m) => Seqy m (Manifest a) a where toSeq = toSeq . toPull
+instance (m1 ~ m2)               => Seqy m1 (Seq m2 a) a  where toSeq = id
+
+instance MonadComp m => Seqy m (Pull a) a
+  where
+    toSeq vec = Seq (length vec) $ return $ \i -> return $ vec!i
+
+zipWithSeq :: (Seqy m vec1 a, Seqy m vec2 b, Monad m) =>
+    (a -> b -> c) -> vec1 -> vec2 -> Seq m c
+zipWithSeq f vec1 vec2 = Seq (min l1 l2) $ do
+    next1 <- init1
+    next2 <- init2
+    return $ \i -> f <$> next1 i <*> next2 i
+  where
+    Seq l1 init1 = toSeq vec1
+    Seq l2 init2 = toSeq vec2
+
+unfold :: (Syntax b, MonadComp m) => Data Length -> (b -> (b,a)) -> b -> Seq m a
+unfold len step init = Seq len $ do
+    r <- initRef init
+    return $ \_ -> do
+      acc <- getRef r
+      let (acc',a) = step acc
+      setRef r acc'
+      return a
+
+mapAccum' :: (Seqy m vec a, Syntax acc, MonadComp m) =>
+    (acc -> a -> (acc,b)) -> acc -> vec -> Seq m (acc,b)
+mapAccum' step acc0 vec = Seq len $ do
+    next <- init
+    r    <- initRef acc0
+    return $ \i -> do
+      a   <- next i
+      acc <- getRef r
+      let (acc',b) = step acc a
+      setRef r acc'
+      acc'' <- getRef r
+        -- Read from the reference to avoid duplicating `acc'`
+      return (acc'',b)
+  where
+    Seq len init = toSeq vec
+
+mapAccum :: (Seqy m vec a, Syntax acc, MonadComp m) =>
+    (acc -> a -> (acc,b)) -> acc -> vec -> Seq m b
+mapAccum step acc0 vec = Seq len $ do
+    next <- init
+    r    <- initRef acc0
+    return $ \i -> do
+      a   <- next i
+      acc <- getRef r
+      let (acc',b) = step acc a
+      setRef r acc'
+      return b
+  where
+    Seq len init = toSeq vec
+
+-- | This function behaves slightly differently from the standard @scanl@ for
+-- lists:
+--
+-- * The initial element is not included in the output
+-- * Thus, the output has the same length as the input
+scan :: (Seqy m vec b, Syntax a, MonadComp m) =>
+    (a -> b -> a) -> a -> vec -> Seq m a
+scan step acc0 = fmap fst . mapAccum' (\acc a -> (step acc a, ())) acc0
+  -- The reason for the discrepancy towards `Data.List.scanl` is that it's
+  -- generally not possible for a `Seq` of length `l+1` to read elements from a
+  -- `Seq` of length `l` without a conditional in the body.
+
+
+
+--------------------------------------------------------------------------------
 -- * Writing to memory
 --------------------------------------------------------------------------------
 
-class ViewManifest vec
+-- It would be possible to make the `vec` parameter to `ViewManifest` and
+-- `Manifestable` have kind `* -> *` and avoid the `a` parameter. But the
+-- current design was chosen for consistency with `ViewManifest2` and
+-- `Manifestable2`.
+
+class ViewManifest vec a | vec -> a
   where
     -- | Try to cast a vector to 'Manifest' directly
-    viewManifest :: vec a -> Maybe (Manifest a)
+    viewManifest :: vec -> Maybe (Manifest a)
     viewManifest _ = Nothing
 
-instance ViewManifest Manifest where viewManifest = Just
-instance ViewManifest Pull
-instance ViewManifest (Push m)
+instance ViewManifest (Manifest a) a where viewManifest = Just
+instance ViewManifest (Pull a) a
+instance ViewManifest (Push m a) a
+instance ViewManifest (Seq m a) a
 
-class ViewManifest vec => Manifestable m vec
+class ViewManifest vec a => Manifestable m vec a | vec -> a
   where
     -- | Write the contents of a vector to memory and get it back as a
     -- 'Manifest' vector. The supplied array may or may not be used for storage.
     manifest :: Syntax a
-        => Arr (Internal a)  -- ^ Where to store the vector
-        -> vec a             -- ^ Vector to store
+        => Arr a  -- ^ Where to store the vector
+        -> vec    -- ^ Vector to store
         -> m (Manifest a)
 
-    default manifest
-        :: (Pushy m (vec a) a, Finite (vec a), Syntax a, MonadComp m)
-        => Arr (Internal a) -> vec a -> m (Manifest a)
+    default manifest :: (Pushy m vec a, Finite vec, Syntax a, MonadComp m) =>
+        Arr a -> vec -> m (Manifest a)
     manifest loc vec = do
-        dumpPush v $ \i a -> setArr i a loc
-        unsafeFreezeToManifest (length vec) loc
+        dumpPush v $ \i a -> setArr loc i a
+        unsafeFreezeSlice (length vec) loc
       where
         v = toPush vec
 
     -- | A version of 'manifest' that allocates a fresh array for the result
-    manifestFresh :: Syntax a => vec a -> m (Manifest a)
+    manifestFresh :: Syntax a => vec -> m (Manifest a)
 
-    default manifestFresh
-        :: (Pushy m (vec a) a, Syntax a, MonadComp m)
-        => vec a -> m (Manifest a)
+    default manifestFresh :: (Finite vec, Syntax a, MonadComp m) =>
+        vec -> m (Manifest a)
     manifestFresh vec = do
-        v   <- toPushM vec
-        loc <- newArr $ length v
-        manifest loc v
+        loc <- newArr $ length vec
+        manifest loc vec
 
     -- | A version of 'manifest' that only stores the vector to the given array
     -- ('manifest' is not guaranteed to use the array)
-    manifestStore :: Syntax a => Arr (Internal a) -> vec a -> m ()
+    manifestStore :: Syntax a => Arr a -> vec -> m ()
 
-    default manifestStore :: (Pushy m (vec a) a, Syntax a, MonadComp m) =>
-        Arr (Internal a) -> vec a -> m ()
+    default manifestStore :: (Pushy m vec a, Syntax a, MonadComp m) =>
+        Arr a -> vec -> m ()
     manifestStore loc = void . manifest loc . toPush
 
 -- | 'manifest' and 'manifestFresh' are no-ops. 'manifestStore' does a proper
 -- 'arrCopy'.
-instance MonadComp m => Manifestable m Manifest
+instance MonadComp m => Manifestable m (Manifest a) a
   where
-    manifest _    = return
-    manifestFresh = return
+    manifest _        = return
+    manifestFresh     = return
+    manifestStore loc = copyArr loc <=< unsafeThawArr
 
-    manifestStore loc (Manifest iarr) = do
-      arr <- unsafeThawArr iarr
-      copyArr loc arr
+instance MonadComp m             => Manifestable m (Pull a) a
+instance (MonadComp m1, m1 ~ m2) => Manifestable m1 (Push m2 a) a
+instance (MonadComp m1, m1 ~ m2) => Manifestable m1 (Seq m2 a) a
 
-instance MonadComp m             => Manifestable m Pull
-instance (MonadComp m1, m1 ~ m2) => Manifestable m1 (Push m2)
 
-class ViewManifest2 vec
+class ViewManifest2 vec a | vec -> a
   where
     -- | Try to cast a vector to 'Manifest2' directly
-    viewManifest2 :: vec a -> Maybe (Manifest2 a)
+    viewManifest2 :: vec -> Maybe (Manifest2 a)
     viewManifest2 _ = Nothing
 
-instance ViewManifest2 Manifest2 where viewManifest2 = Just
-instance ViewManifest2 Pull2
-instance ViewManifest2 (Push2 m)
+instance ViewManifest2 (Manifest2 a) a where viewManifest2 = Just
+instance ViewManifest2 (Pull2 a) a
+instance ViewManifest2 (Push2 m a) a
 
-class ViewManifest2 vec => Manifestable2 m vec
+class ViewManifest2 vec a => Manifestable2 m vec a | vec -> a
   where
     -- | Write the contents of a vector to memory and get it back as a
     -- 'Manifest2' vector
     manifest2 :: Syntax a
-        => Arr (Internal a)  -- ^ Where to store the result
-        -> vec a             -- ^ Vector to store
+        => Arr a  -- ^ Where to store the result
+        -> vec    -- ^ Vector to store
         -> m (Manifest2 a)
 
-    default manifest2 :: (Pushy2 m (vec a) a, Syntax a, MonadComp m) =>
-        Arr (Internal a) -> vec a -> m (Manifest2 a)
+    default manifest2 :: (Pushy2 m vec a, Syntax a, MonadComp m) =>
+        Arr a -> vec -> m (Manifest2 a)
     manifest2 loc vec = do
-        dumpPush2 v $ \i j a -> setArr (i*c + j) a loc
-        closeManifest2 . nest r c <$> unsafeFreezeToManifest (r*c) loc
+        dumpPush2 v $ \i j a -> setArr loc (i*c + j) a
+        nest r c <$> unsafeFreezeSlice (r*c) loc
       where
         v     = toPush2 vec
         (r,c) = extent2 v
 
     -- | A version of 'manifest2' that allocates a fresh array for the result
-    manifestFresh2 :: Syntax a => vec a -> m (Manifest2 a)
+    manifestFresh2 :: Syntax a => vec -> m (Manifest2 a)
 
-    default manifestFresh2 :: (Pushy2 m (vec a) a, Syntax a, MonadComp m) =>
-        vec a -> m (Manifest2 a)
+    default manifestFresh2 :: (Finite2 vec, Syntax a, MonadComp m) =>
+        vec -> m (Manifest2 a)
     manifestFresh2 vec = do
-        v   <- toPushM2 vec
-        loc <- newArr (numRows v * numCols v)
+        loc <- newArr (numRows vec * numCols vec)
         manifest2 loc vec
 
     -- | A version of 'manifest2' that only stores the vector to the given array
     -- ('manifest2' is not guaranteed to use the array)
-    manifestStore2 :: Syntax a => Arr (Internal a) -> vec a -> m ()
+    manifestStore2 :: Syntax a => Arr a -> vec -> m ()
 
-    default manifestStore2 :: (Pushy2 m (vec a) a, Syntax a, MonadComp m) =>
-        Arr (Internal a) -> vec a -> m ()
+    default manifestStore2 :: (Pushy2 m vec a, Syntax a, MonadComp m) =>
+        Arr a -> vec -> m ()
     manifestStore2 loc = void . manifest2 loc . toPush2
 
 -- | 'manifest2' and 'manifestFresh2' are no-ops. 'manifestStore2' does a proper
 -- 'arrCopy'.
-instance MonadComp m => Manifestable2 m Manifest2
+instance MonadComp m => Manifestable2 m (Manifest2 a) a
   where
-    manifest2 _    = return
-    manifestFresh2 = return
+    manifest2 _        = return
+    manifestFresh2     = return
+    manifestStore2 loc = copyArr loc <=< unsafeThawArr . unnest
 
-    manifestStore2 loc (Manifest2 man) = do
-      let Manifest iarr = unnest man
-      arr <- unsafeThawArr iarr
-      copyArr loc arr
-
-instance MonadComp m             => Manifestable2 m Pull2
-instance (MonadComp m1, m1 ~ m2) => Manifestable2 m1 (Push2 m2)
+instance MonadComp m             => Manifestable2 m (Pull2 a) a
+instance (MonadComp m1, m1 ~ m2) => Manifestable2 m1 (Push2 m2 a) a
 

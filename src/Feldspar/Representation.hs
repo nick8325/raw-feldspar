@@ -120,7 +120,7 @@ typeEqFun (FunT ta tb) (FunT ua ub) = do
 typeEqFun _ _ = Nothing
 
 -- | Mutable variable
-newtype Ref a = Ref { unRef :: Struct PrimType' Imp.Ref a }
+newtype Ref a = Ref { unRef :: Struct PrimType' Imp.Ref (Internal a) }
   -- A reference to a tuple is a struct of smaller references. This means that
   -- creating a reference to a tuple will generate several calls to generate new
   -- references. This must be done already in the front end, which means that
@@ -133,6 +133,9 @@ newtype Ref a = Ref { unRef :: Struct PrimType' Imp.Ref a }
   -- to a struct of small references. Among other things, that would require
   -- dynamic typing.)
 
+-- | Reference specialized to 'Data' elements
+type DRef a = Ref (Data a)
+
 instance Eq (Ref a)
   where
     Ref a == Ref b = and $ zipListStruct (==) a b
@@ -141,7 +144,7 @@ instance Eq (Ref a)
 data Arr a = Arr
     { arrOffset :: Data Index
     , arrLength :: Data Length
-    , unArr     :: Struct PrimType' (Imp.Arr Index) a
+    , unArr     :: Struct PrimType' (Imp.Arr Index) (Internal a)
     }
   -- `arrOffset` gives the offset into the internal arrays. The user should not
   -- be able to access the offset or the internal arrays.
@@ -156,6 +159,9 @@ data Arr a = Arr
   -- An array of tuples is represented as a struct of smaller arrays. See
   -- comment to `Ref`.
 
+-- | Array specialized to 'Data' elements
+type DArr a = Arr (Data a)
+
 -- | '==' checks if two 'Arr' use the same physical array. The length and offset
 -- are ignored.
 instance Eq (Arr a)
@@ -166,8 +172,11 @@ instance Eq (Arr a)
 data IArr a = IArr
     { iarrOffset :: Data Index
     , iarrLength :: Data Length
-    , unIArr     :: Struct PrimType' (Imp.IArr Index) a
+    , unIArr     :: Struct PrimType' (Imp.IArr Index) (Internal a)
     }
+
+-- | Immutable array specialized to 'Data' elements
+type DIArr a = IArr (Data a)
 
 -- | Check if an 'Arr' and and 'IArr' use the same physical array. The length
 -- and offset are ignored. This operation may give false negatives, but never

@@ -1,7 +1,25 @@
 {-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
 
 -- | Data structures for working with arrays
-module Feldspar.Data.Array where
+module Feldspar.Data.Array
+  ( Nest (nestNumSegs, nestSegLength)
+  , nest
+  , nestEvery
+  , unnest
+  , Dim, Dim1, Dim2, Dim3, Dim4
+  , InnerExtent (..)
+  , listExtent
+  , MultiNest
+  , multiNest
+  , InnerExtent' (..)
+  , listExtent'
+  , tailExtent'
+  , convInnerExtent
+    -- * 2-dimensional arrays
+  , Finite2 (..)
+  , numRows
+  , numCols
+  ) where
 
 
 import Prelude (Functor, Foldable, Traversable, error, product, reverse)
@@ -14,7 +32,7 @@ import Feldspar.Run
 data Nest a = Nest
     { nestNumSegs   :: Data Length
     , nestSegLength :: Data Length
-    , nestInner     :: a
+    , _nestInner    :: a
     }
   deriving (Functor, Foldable, Traversable)
 
@@ -72,8 +90,6 @@ nest l w a = Nest (guard l) (guard w) a
       InternalAssertion
       (l*w == length a)
       "nest: unbalanced nesting"
-
--- TODO Should `Nest` not be exported?
 
 -- | A version of 'nest' that only takes the segment length as argument. The
 -- total number of segments is computed by division.
@@ -200,4 +216,39 @@ convInnerExtent e = go e (listExtent e)
     go Outer    _      = OE
     go (e :> _) (l:ls) = SE l $ go e ls
     go (_ :> _) _      = error "convInnerExtent: impossible"
+
+
+
+--------------------------------------------------------------------------------
+-- * 2-dimensional arrays
+--------------------------------------------------------------------------------
+
+class Finite2 a
+  where
+    -- | Get the extent of a 2-dimensional vector
+    --
+    -- It must hold that:
+    --
+    -- @
+    -- `numRows` == `length`
+    -- @
+    extent2
+        :: a
+        -> (Data Length, Data Length)  -- ^ @(rows,columns)@
+
+-- | Get the number of rows of a two-dimensional structure
+--
+-- @
+-- `numRows` == `length`
+-- @
+numRows :: Finite2 a => a -> Data Length
+numRows = fst . extent2
+
+-- | Get the number of columns of a two-dimensional structure
+numCols :: Finite2 a => a -> Data Length
+numCols = snd . extent2
+
+instance Finite2 (Nest a)
+  where
+    extent2 n = (nestNumSegs n, nestSegLength n)
 

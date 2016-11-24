@@ -9,6 +9,8 @@ module Feldspar.Run.Frontend
 
 
 
+import Language.Syntactic
+
 import qualified Control.Monad.Operational.Higher as Oper
 
 import Language.Embedded.Imperative.Frontend.General hiding (Ref, Arr, IArr)
@@ -112,7 +114,7 @@ newNamedPtr :: PrimType a
 newNamedPtr = Run . Imp.newNamedPtr
 
 -- | Cast a pointer to an array
-ptrToArr :: PrimType a => Ptr a -> Data Length -> Run (Arr a)
+ptrToArr :: PrimType a => Ptr a -> Data Length -> Run (DArr a)
 ptrToArr ptr len = fmap (Arr 0 len . Single) $ Run $ Imp.ptrToArr ptr
 
 -- | Create a pointer to an abstract object. The only thing one can do with such
@@ -230,15 +232,15 @@ valArg :: PrimType' a => Data a -> FunArg Data PrimType'
 valArg = Imp.valArg
 
 -- | Reference argument
-refArg :: PrimType' a => Ref a -> FunArg Data PrimType'
+refArg :: PrimType' (Internal a) => Ref a -> FunArg Data PrimType'
 refArg (Ref r) = Imp.refArg (extractSingle r)
 
 -- | Mutable array argument
-arrArg :: PrimType' a => Arr a -> FunArg Data PrimType'
+arrArg :: PrimType' (Internal a) => Arr a -> FunArg Data PrimType'
 arrArg (Arr o _ a) = Imp.offset (Imp.arrArg (extractSingle a)) o
 
 -- | Immutable array argument
-iarrArg :: PrimType' a => IArr a -> FunArg Data PrimType'
+iarrArg :: PrimType' (Internal a) => IArr a -> FunArg Data PrimType'
 iarrArg (IArr o _ a) = Imp.offset (Imp.iarrArg (extractSingle a)) o
 
 -- | Abstract object argument

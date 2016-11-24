@@ -72,8 +72,8 @@ import Feldspar.Data.Vector
 
 -- | Double-buffered storage
 data Store a = Store
-    { activeBuf :: Arr (Internal a)
-    , freeBuf   :: Arr (Internal a)
+    { activeBuf :: Arr a
+    , freeBuf   :: Arr a
     }
 
 -- | Create a new double-buffered 'Store', initialized to a 0x0 matrix
@@ -87,7 +87,7 @@ newStore l = Store <$> newNamedArr "store" l <*> newNamedArr "store" l
 -- is alive.
 unsafeFreezeStore :: (Syntax a, MonadComp m) =>
     Data Length -> Store a -> m (Manifest a)
-unsafeFreezeStore l = unsafeFreezeToManifest l . activeBuf
+unsafeFreezeStore l = unsafeFreezeSlice l . activeBuf
 
 -- | Read the contents of a 'Store' without making a copy (2-dimensional
 -- version). This is generally only safe if the the 'Store' is not updated as
@@ -98,7 +98,7 @@ unsafeFreezeStore2 :: (Syntax a, MonadComp m)
     -> Store a
     -> m (Manifest2 a)
 unsafeFreezeStore2 r c Store {..} =
-    closeManifest2 . nest r c <$> unsafeFreezeToManifest (r*c) activeBuf
+    nest r c <$> unsafeFreezeSlice (r*c) activeBuf
 
 -- | Cheap swapping of the two buffers in a 'Store'
 swapStore :: Syntax a => Store a -> Run ()
@@ -106,10 +106,10 @@ swapStore Store {..} = unsafeSwapArr activeBuf freeBuf
 
 -- | Write a 1-dimensional vector to a 'Store'. The operation may become a no-op
 -- if the vector is already in the 'Store'.
-setStore :: (Manifestable Run vec, Finite (vec a), Syntax a) =>
-    Store a -> vec a -> Run ()
+setStore :: (Manifestable Run vec a, Finite vec, Syntax a) =>
+    Store a -> vec -> Run ()
 setStore st@Store {..} vec = case viewManifest vec of
-    Just (Manifest iarr)
+    Just iarr
       | unsafeEqArrIArr activeBuf iarr ->
           iff (iarrOffset iarr == arrOffset activeBuf)
             (return ())
@@ -123,11 +123,12 @@ setStore st@Store {..} vec = case viewManifest vec of
 
 -- | Write a 2-dimensional vector to a 'Store'. The operation may become a no-op
 -- if the vector is already in the 'Store'.
-setStore2 :: (Manifestable2 Run vec, Finite2 (vec a), Syntax a) =>
-    Store a -> vec a -> Run ()
+setStore2 :: (Manifestable2 Run vec a, Finite2 vec, Syntax a) =>
+    Store a -> vec -> Run ()
 setStore2 st@Store {..} vec = case viewManifest2 vec of
-    Just (Manifest2 (Nest _ _ (Manifest iarr)))
-      | unsafeEqArrIArr activeBuf iarr ->
+    Just arr
+      | let iarr = unnest arr
+      , unsafeEqArrIArr activeBuf iarr ->
           iff (iarrOffset iarr == arrOffset activeBuf)
             (return ())
             saveAndSwap
@@ -138,29 +139,29 @@ setStore2 st@Store {..} vec = case viewManifest2 vec of
 
 -- | Write the contents of a vector to a 'Store' and get it back as a
 -- 'Manifest' vector
-store :: (Manifestable Run vec, Finite (vec a), Syntax a) =>
-    Store a -> vec a -> Run (Manifest a)
+store :: (Manifestable Run vec a, Finite vec, Syntax a) =>
+    Store a -> vec -> Run (Manifest a)
 store st vec = setStore st vec >> unsafeFreezeStore (length vec) st
 
 -- | Write the contents of a vector to a 'Store' and get it back as a
 -- 'Manifest2' vector
-store2 :: (Manifestable2 Run vec, Finite2 (vec a), Syntax a) =>
-    Store a -> vec a -> Run (Manifest2 a)
+store2 :: (Manifestable2 Run vec a, Finite2 vec, Syntax a) =>
+    Store a -> vec -> Run (Manifest2 a)
 store2 st vec = setStore2 st vec >> unsafeFreezeStore2 r c st
   where
     (r,c) = extent2 vec
 
 loopStore
     :: ( Syntax a
-       , Manifestable Run vec1
-       , Finite (vec1 a)
-       , Manifestable Run vec2
-       , Finite (vec2 a)
+       , Manifestable Run vec1 a
+       , Finite vec1
+       , Manifestable Run vec2 a
+       , Finite vec2
        )
     => Store a
     -> IxRange (Data Length)
-    -> (Data Index -> Manifest a -> Run (vec1 a))
-    -> vec2 a
+    -> (Data Index -> Manifest a -> Run vec1)
+    -> vec2
     -> Run (Manifest a)
 loopStore st rng body init = do
     setStore st init
@@ -175,15 +176,15 @@ loopStore st rng body init = do
 
 loopStore2
     :: ( Syntax a
-       , Manifestable2 Run vec1
-       , Finite2 (vec1 a)
-       , Manifestable2 Run vec2
-       , Finite2 (vec2 a)
+       , Manifestable2 Run vec1 a
+       , Finite2 vec1
+       , Manifestable2 Run vec2 a
+       , Finite2 vec2
        )
     => Store a
     -> IxRange (Data Length)
-    -> (Data Index -> Manifest2 a -> Run (vec1 a))
-    -> vec2 a
+    -> (Data Index -> Manifest2 a -> Run vec1)
+    -> vec2
     -> Run (Manifest2 a)
 loopStore2 st rng body init = do
     setStore2 st init

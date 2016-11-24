@@ -181,16 +181,17 @@ instance (MarshalFeld a, MarshalFeld b, MarshalFeld c, MarshalFeld d) => Marshal
         >> fwrite hdl d
     fread hdl = (,,,) <$> fread hdl <*> fread hdl <*> fread hdl <*> fread hdl
 
-instance (MarshalHaskell a, MarshalFeld (Data a), Type a) => MarshalFeld (Arr a)
+instance (MarshalHaskell (Internal a), MarshalFeld a, Syntax a) =>
+    MarshalFeld (Arr a)
   where
-    type HaskellRep (Arr a) = [a]
+    type HaskellRep (Arr a) = [Internal a]
 
     fwrite hdl arr = do
         len <- shareM $ length arr
         fput hdl "" len " "
         for (0,1,Excl len) $ \i -> do
-            a <- getArr i arr
-            fwrite hdl (a :: Data a)
+            a <- getArr arr i
+            fwrite hdl a
             fprintf hdl " "
 
     fread hdl = do
@@ -198,19 +199,19 @@ instance (MarshalHaskell a, MarshalFeld (Data a), Type a) => MarshalFeld (Arr a)
         arr <- newArr len
         for (0,1,Excl len) $ \i -> do
             a <- fread hdl
-            setArr i (a :: Data a) arr
+            setArr arr i a
         return arr
 
-instance (MarshalHaskell a, MarshalFeld (Data a), Type a) =>
+instance (MarshalHaskell (Internal a), MarshalFeld a, Syntax a) =>
     MarshalFeld (IArr a)
   where
-    type HaskellRep (IArr a) = [a]
+    type HaskellRep (IArr a) = [Internal a]
 
     fwrite hdl arr = do
         len <- shareM $ length arr
         fput hdl "" len " "
         for (0,1,Excl len) $ \i -> do
-            fwrite hdl (arrIx arr i :: Data a)
+            fwrite hdl $ arrIx arr i
             fprintf hdl " "
 
     fread hdl = do
@@ -218,13 +219,28 @@ instance (MarshalHaskell a, MarshalFeld (Data a), Type a) =>
         arr <- newArr len
         for (0,1,Excl len) $ \i -> do
             a <- fread hdl
-            setArr i (a :: Data a) arr
+            setArr arr i a
         iarr <- unsafeFreezeArr arr
         return iarr
 
 -- | Connect a Feldspar function between serializable types to @stdin@/@stdout@
 connectStdIO :: (MarshalFeld a, MarshalFeld b) => (a -> Run b) -> Run ()
 connectStdIO f = (readStd >>= f) >>= writeStd
+
+-- | Connect a Feldspar function between serializable types to @stdin@/@stdout@.
+-- The input/output will be in the form of a list as recognized by 'toHaskell' /
+-- 'fromHaskell' (i.e. the length followed by the elements in sequence).
+--
+-- The function will be mapped over the input list in a lazy manner.
+streamStdIO :: (MarshalFeld a, MarshalFeld b) => (a -> Run b) -> Run ()
+streamStdIO f = do
+    n :: Data Length <- readStd
+    writeStd n
+    for (0,1,Excl n) $ \_ ->
+      connectStdIO $ \a -> printf " " >> f a
+  -- TODO Better to continue until EOF, but I wasn't able to make this work.
+  -- Presumably, one needs to check for EOF inside each `fread` and signal that
+  -- somehow.
 
 -- | A version of 'marshalled' that takes 'ExternalCompilerOpts' as additional
 -- argument
@@ -245,10 +261,10 @@ marshalled' opts eopts f body =
 --
 -- For example, given the following Feldspar function:
 --
--- > sumArr :: Fin (IArr Int32) -> Run (Data Int32)
--- > sumArr (Fin l arr) = do
--- >     r <- initRef (0 :: Data Int32)
--- >     for (0,1,Excl l) $ \i -> modifyRefD r (+ arrIx arr i)
+-- > sumArr :: DIArr Int32 -> Run (Data Int32)
+-- > sumArr arr = do
+-- >     r <- initRef 0
+-- >     for (0,1,Excl $ length arr) $ \i -> modifyRef r (+ arrIx arr i)
 -- >     unsafeFreezeRef r
 --
 -- 'marshalled' can be used as follows:
@@ -260,4 +276,29 @@ marshalled :: (MarshalFeld a, MarshalFeld b)
          -- ^ Function that has access to the compiled executable as a function
     -> IO c
 marshalled = marshalled' def def
+
+-- | A version of 'marshalledStream' that takes 'ExternalCompilerOpts' as
+-- additional argument
+marshalledStream' :: (MarshalFeld a, MarshalFeld b)
+    => CompilerOpts
+    -> ExternalCompilerOpts
+    -> (a -> Run b)  -- ^ Function to compile
+    -> (([HaskellRep a] -> IO [HaskellRep b]) -> IO c)
+         -- ^ Function that has access to the compiled executable as a function
+    -> IO c
+marshalledStream' opts eopts f body =
+    withCompiled' opts eopts (streamStdIO f) $ \g ->
+      body $ \is -> do
+        parse toHaskell <$> g (fromHaskell is)
+
+-- | Compile a function and make it available as an 'IO' function. The compiled
+-- function will be applied repeatedly over the list of inputs producing a list
+-- of outputs. Note that compilation only happens once, even if the function is
+-- used many times in the body.
+marshalledStream :: (MarshalFeld a, MarshalFeld b)
+    => (a -> Run b)  -- ^ Function to compile
+    -> (([HaskellRep a] -> IO [HaskellRep b]) -> IO c)
+         -- ^ Function that has access to the compiled executable as a function
+    -> IO c
+marshalledStream = marshalledStream' def def
 

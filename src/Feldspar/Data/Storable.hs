@@ -101,7 +101,7 @@ instance Forcible a => Forcible (Validated a)
 
 instance Syntax a => Forcible (Option a)
   where
-    type ValueRep (Option a) = (Data Bool, Data (Internal a))
+    type ValueRep (Option a) = (Data Bool, a)
     toValue o = do
         valid <- initRef false
         r     <- initRef (example :: a)
@@ -109,7 +109,7 @@ instance Syntax a => Forcible (Option a)
           (\_ -> return ())
           (\b -> setRef valid true >> setRef r b)
         (,) <$> unsafeFreezeRef valid <*> unsafeFreezeRef r
-    fromValue (valid,a) = guarded "fromIStore: none" valid (Feldspar.sugar a)
+    fromValue (valid,a) = guarded "fromIStore: none" valid a
   -- Ideally, one should use `Storable` instead of the `Syntax` constraint, and
   -- make `r` a `Store` instead of a reference. But the problem is that one
   -- would have to make use of `newStore` which needs a size argument. This is
@@ -176,7 +176,7 @@ instance Storable ()
 
 instance Type a => Storable (Data a)
   where
-    type StoreRep (Data a)  = Ref a
+    type StoreRep (Data a)  = DRef a
     type StoreSize (Data a) = ()
     newStoreRep _ _      = newRef
     initStoreRep         = initRef
@@ -239,25 +239,25 @@ initStoreRepVec2 vec = do
     return st
 
 writeStoreRepVec
-    :: ( Manifestable m vec
-       , StoreRep (vec a) ~ (Ref Length, Arr (Internal a))
-       , Finite (vec a)
+    :: ( Manifestable m vec a
+       , StoreRep vec ~ (DRef Length, Arr a)
+       , Finite vec
        , Syntax a
        , MonadComp m
        )
-    => StoreRep (vec a) -> vec a -> m ()
+    => StoreRep vec -> vec -> m ()
 writeStoreRepVec (lr,arr) vec = do
     setRef lr $ length vec
     manifestStore arr vec
 
 writeStoreRepVec2
-    :: ( Manifestable2 m vec
-       , StoreRep (vec a) ~ (Ref Length, Ref Length, Arr (Internal a))
-       , Finite2 (vec a)
+    :: ( Manifestable2 m vec a
+       , StoreRep vec ~ (DRef Length, DRef Length, Arr a)
+       , Finite2 vec
        , Syntax a
        , MonadComp m
        )
-    => StoreRep (vec a) -> vec a -> m ()
+    => StoreRep vec -> vec -> m ()
 writeStoreRepVec2 (rr,cr,arr) vec = do
     setRef rr $ numRows vec
     setRef cr $ numCols vec
@@ -265,7 +265,7 @@ writeStoreRepVec2 (rr,cr,arr) vec = do
 
 instance Syntax a => Storable (Manifest a)
   where
-    type StoreRep (Manifest a)  = (Ref Length, Arr (Internal a))
+    type StoreRep (Manifest a)  = (DRef Length, Arr a)
     type StoreSize (Manifest a) = Data Length
 
     newStoreRep _ l = (,) <$> initRef l <*> newArr l
@@ -274,17 +274,17 @@ instance Syntax a => Storable (Manifest a)
 
     readStoreRep (lr,arr) = do
         l <- getRef lr
-        Manifest . slice 0 l <$> freezeArr arr
+        freezeSlice l arr
 
     unsafeFreezeStoreRep (lr,arr) = do
         l <- unsafeFreezeRef lr
-        unsafeFreezeToManifest l arr
+        unsafeFreezeSlice l arr
 
     writeStoreRep = writeStoreRepVec
 
 instance Syntax a => Storable (Manifest2 a)
   where
-    type StoreRep (Manifest2 a)  = (Ref Length, Ref Length, Arr (Internal a))
+    type StoreRep (Manifest2 a)  = (DRef Length, DRef Length, Arr a)
     type StoreSize (Manifest2 a) = (Data Length, Data Length)
 
     newStoreRep _ (r,c) = (,,) <$> initRef r <*> initRef c <*> newArr (r*c)
@@ -294,28 +294,27 @@ instance Syntax a => Storable (Manifest2 a)
     readStoreRep (rr,cr,arr) = do
         r <- getRef rr
         c <- getRef cr
-        Manifest2 . nest r c . Manifest . slice 0 (r*c) <$> freezeArr arr
+        nest r c <$> freezeSlice (r*c) arr
 
     unsafeFreezeStoreRep (rr,cr,arr) = do
         r <- unsafeFreezeRef rr
         c <- unsafeFreezeRef cr
-        Manifest2 . nest r c <$> unsafeFreezeToManifest (r*c) arr
+        nest r c <$> unsafeFreezeSlice (r*c) arr
 
     writeStoreRep = writeStoreRepVec2
 
 instance Syntax a => Storable (Pull a)
   where
-    type StoreRep (Pull a)  = (Ref Length, Arr (Internal a))
+    type StoreRep (Pull a)  = (DRef Length, Arr a)
     type StoreSize (Pull a) = Data Length
 
     newStoreRep _ = newStoreRep (Proxy :: Proxy (Manifest a))
     initStoreRep  = initStoreRepVec
 
-    readStoreRep =
-        fmap (toPull . (id :: Manifest a -> Manifest a)) . readStoreRep
+    readStoreRep = fmap (toPull . (id :: Manifest a -> _)) . readStoreRep
 
     unsafeFreezeStoreRep =
-        fmap (toPull . (id :: Manifest a -> Manifest a)) . unsafeFreezeStoreRep
+        fmap (toPull . (id :: Manifest a -> _)) . unsafeFreezeStoreRep
 
     writeStoreRep = writeStoreRepVec
 
@@ -323,33 +322,32 @@ instance Syntax a => Storable (Push Comp a)
   -- Generalizing this instance to any monad would require making the monad a
   -- parameter of the class (like for Manifestable)
   where
-    type StoreRep (Push Comp a)  = (Ref Length, Arr (Internal a))
+    type StoreRep (Push Comp a)  = (DRef Length, Arr a)
     type StoreSize (Push Comp a) = Data Length
 
     newStoreRep _ = newStoreRep (Proxy :: Proxy (Manifest a))
     initStoreRep  = initStoreRepVec
 
-    readStoreRep =
-        fmap (toPush . (id :: Manifest a -> Manifest a)) . readStoreRep
+    readStoreRep = fmap (toPush . (id :: Manifest a -> _)) . readStoreRep
 
     unsafeFreezeStoreRep =
-        fmap (toPush . (id :: Manifest a -> Manifest a)) . unsafeFreezeStoreRep
+        fmap (toPush . (id :: Manifest a -> _)) . unsafeFreezeStoreRep
 
     writeStoreRep (lr,arr) vec = liftComp $ do
         setRef lr $ length vec
         manifestStore arr vec
 
-instance (Storable a, Syntax a) => Storable (Option a)
+instance (Storable a, Syntax a, StoreSize a ~ ()) => Storable (Option a)
   where
-    type StoreRep (Option a)  = (Ref Bool, StoreRep a)
-    type StoreSize (Option a) = StoreSize a
-    newStoreRep _ s = do
+    type StoreRep (Option a)  = (DRef Bool, StoreRep a)
+    type StoreSize (Option a) = ()
+    newStoreRep _ _ = do
         valid <- initRef false
-        r     <- newStoreRep (Nothing :: Maybe a) s
+        r     <- newStoreRep (Nothing :: Maybe a) ()
         return (valid,r)
     initStoreRep o = do
         valid <- initRef false
-        r     <- initStoreRep (example :: a)  -- TODO
+        r     <- newStoreRep (Proxy :: Proxy a) ()
         caseOptionM o
           (\_ -> return ())
           (\b -> writeStoreRep (valid,r) (true,b))
