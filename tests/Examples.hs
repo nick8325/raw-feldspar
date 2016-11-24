@@ -7,6 +7,7 @@ import qualified Data.Complex as Complex
 import Feldspar.Run
 import Feldspar.Data.Vector
 import Feldspar.Data.Buffered
+import Feldspar.Verify
 
 import qualified Test.QuickCheck as QC
 import qualified Test.QuickCheck.Monadic as QC

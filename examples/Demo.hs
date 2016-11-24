@@ -25,14 +25,80 @@ absolute = do
     assert (i == n || i == negate n) "Absolute value is wrong"
     printf "The absolute value is %d\n" i
 
+blah :: Run ()
+blah = do
+  ref <- initRef =<< fget stdin :: Run (Ref Int32)
+  i <- unsafeFreezeRef ref :: Run (Data Int32)
+
+  for (0, 1, Excl (5 :: Data Int32)) $ \_ -> do
+    j <- unsafeFreezeRef ref :: Run (Data Int32)
+    iff (j > 2) (setRef ref (3 :: Data Int32)) (return ())
+  j <- unsafeFreezeRef ref :: Run (Data Int32)
+  iff (j < 2) (printf "%d\n" i) (return ())
+
+oops :: Run ()
+oops = do
+  ref <- initRef (3 :: Data Word32)
+  x   <- unsafeFreezeRef ref
+
+  setRef ref (4 :: Data Word32)
+  y   <- unsafeFreezeRef ref
+  -- XXX this isn't safe.
+  -- Need to make dryInterp return fresh variable each time.
+  -- To do: transform program back properly, instead of using patch.
+  -- That way we don't need variable names to match up.
+  printf "%d\n" (x :: Data Word32)
+  printf "%d\n" (y :: Data Word32)
+
 sigma :: Run ()
 sigma = do
   printf "Enter a number: "
   n <- fget stdin
 
-  let total = forLoop n 0 (+)
-  assert (total+total == n*(n-1)) "Total is wrong"
+  let total = forLoop n 0 (\i n -> hintVal (2*n == i*(i-1)) $ i + n)
+  total <- initRef total >>= unsafeFreezeRef
+  assert (2*total == n*(n-1)) "Total is wrong"
   printf "The sum is %d\n" total
+
+bsearch :: Run ()
+bsearch = do
+  n   <- newRef >>= unsafeFreezeRef
+  x   <- newRef >>= unsafeFreezeRef
+  sk  <- newRef >>= unsafeFreezeRef
+  assert (sk < n) "skolem axiom"
+  arr <- newArr n >>= unsafeFreezeArr :: Run (IArr Int32)
+  lo <- initRef (0 :: Data Index)
+  hi <- initRef (n :: Data Index)
+  while (liftM2 (/=) (unsafeFreezeRef lo) (unsafeFreezeRef hi)) $ do
+    do { lo <- unsafeFreezeRef lo; hi <- unsafeFreezeRef hi; assert (lo <= hi) "lohi" }
+    do { lo <- unsafeFreezeRef lo; assert (lo < n) "lo" }
+    do { hi <- unsafeFreezeRef hi; assert (hi <= n) "hi" }
+    let avg x y = x + (y-x) `shiftR` 1
+    mid <- liftM2 avg (unsafeFreezeRef lo) (unsafeFreezeRef hi)
+    let y = arrIx arr mid :: Data Int32
+    iff (x == y) (setRef lo mid >> setRef hi (mid+1) >> break) (iff (x < y) (setRef hi mid) (setRef lo (mid+1)))
+  lo <- unsafeFreezeRef lo
+  hi <- unsafeFreezeRef hi
+  assert (not (arrIx arr sk == x) || lo <  hi) "value not found"
+  assert (not (arrIx arr sk == x) || arrIx arr lo == x) "value not found"
+  assert (not (arrIx arr lo == x) || lo <  hi) "value found"
+
+bsearch' :: Run ()
+bsearch' = do
+  lo <- initRef (0 :: Data Index)
+  while (liftM2 (/=) (unsafeFreezeRef lo) (unsafeFreezeRef lo)) $ do
+    return ()
+
+-- A super-simple verification example.
+count :: Run ()
+count = do
+  printf "Enter a number: "
+  n <- fget stdin
+
+  let total = forLoop n 0 (\i n -> hintVal (n == i) $ i + 1)
+  total <- initRef total >>= unsafeFreezeRef
+  assert (total == n) "Count is wrong"
+  printf "The count is %d\n" total
 
 sumInput :: Run ()
 sumInput = do
@@ -107,7 +173,13 @@ map_inplace = do
     vec <- unsafeFreezeArr loc
     printf "result: %d\n" $ sum vec
 
-
+map2_inplace :: Run ()
+map2_inplace = do
+    n   <- fget stdin
+    loc <- newArr (n :: Data Word32)
+    vec <- unsafeFreezeArr loc
+    for (0, 1, Excl (n :: Data Word32)) $ \i -> do
+      setArr i (arrIx vec (i+1)+1 :: Data Word32) loc :: Run ()
 
 ------------------------------------------------------------
 

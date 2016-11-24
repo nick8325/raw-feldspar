@@ -31,10 +31,7 @@ import Feldspar.Run.Representation
 --
 -- This is generally an unsafe operation. E.g. it can be used to make a
 -- reference to a data structure escape the scope of the data.
---
--- The 'IsPointer' class ensures that the operation is only possible for types
--- that are represented as pointers in C.
-unsafeSwap :: IsPointer a => a -> a -> Run ()
+unsafeSwap :: PrimType' a => Imp.Arr Index a -> Imp.Arr Index a -> Run ()
 unsafeSwap a b = Run $ Imp.unsafeSwap a b
 
 -- | Like 'unsafeSwap' but for arrays. The why we cannot use 'unsafeSwap'

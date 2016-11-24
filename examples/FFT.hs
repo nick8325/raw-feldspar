@@ -105,6 +105,7 @@ fft'
     -> vec (Data (Complex a))
     -> Run (DManifest (Complex a))
 fft' st inv v = do
+    assert (length v .&. (length v - 1) == 0) "power of two length"
     n <- shareM (ilog2 (length v) - 1)
     fftCore st inv n v >>= bitRev st n
 
