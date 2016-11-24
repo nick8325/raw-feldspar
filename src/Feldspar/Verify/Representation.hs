@@ -91,49 +91,49 @@ instance SMTEval Prim Int8 where
   fromConstant = Int8 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
-  skolemIndex = fromSMT (fun "skolem-int8" [])
+  --skolemIndex = fromSMT (fun "skolem-int8" [])
 
 instance SMTEval Prim Int16 where
   fromConstant = Int16 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
-  skolemIndex = fromSMT (fun "skolem-int16" [])
+  --skolemIndex = fromSMT (fun "skolem-int16" [])
 
 instance SMTEval Prim Int32 where
   fromConstant = Int32 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
-  skolemIndex = fromSMT (fun "skolem-int32" [])
+  --skolemIndex = fromSMT (fun "skolem-int32" [])
 
 instance SMTEval Prim Int64 where
   fromConstant = Int64 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
-  skolemIndex = fromSMT (fun "skolem-int64" [])
+  --skolemIndex = fromSMT (fun "skolem-int64" [])
 
 instance SMTEval Prim Word8 where
   fromConstant = Word8 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
-  skolemIndex = fromSMT (fun "skolem-word8" [])
+  --skolemIndex = fromSMT (fun "skolem-word8" [])
 
 instance SMTEval Prim Word16 where
   fromConstant = Word16 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
-  skolemIndex = fromSMT (fun "skolem-word16" [])
+  --skolemIndex = fromSMT (fun "skolem-word16" [])
 
 instance SMTEval Prim Word32 where
   fromConstant = Word32 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
-  skolemIndex = fromSMT (fun "skolem-word32" [])
+  --skolemIndex = fromSMT (fun "skolem-word32" [])
 
 instance SMTEval Prim Word64 where
   fromConstant = Word64 . fromIntegral
   witnessNum      _ = Dict
   witnessOrd      _ = Dict
-  skolemIndex = fromSMT (fun "skolem-word64" [])
+  --skolemIndex = fromSMT (fun "skolem-word64" [])
 
 instance SMTEval Prim Float where
   fromConstant = Float . fromRational . toRational
