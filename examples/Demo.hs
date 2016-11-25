@@ -72,10 +72,47 @@ map_inplace = do
 map2_inplace :: Run ()
 map2_inplace = do
     n   <- fget stdin
-    loc :: Arr (Data Word32) <- newArr n
+    assert (n < maxBound) "oops"
+    loc :: Arr (Data Word32) <- newArr (n+1)
     vec <- unsafeFreezeArr loc
     for (0, 1, Excl (n :: Data Word32)) $ \i -> do
       setArr loc i (arrIx vec i+1)
+
+tail_inplace :: Run ()
+tail_inplace = do
+    n <- fget stdin
+    loc :: Arr (Data Word32) <- newArr n
+    vec <- unsafeFreezeArr loc
+    let when cond x = iff cond x (return ())
+    when (n > 0) $
+      for (0, 1, Excl (n-1)) $ \i -> do
+        setArr loc i (arrIx vec (i+1)+1)
+
+filter_inplace :: Run ()
+filter_inplace = do
+    n <- fget stdin
+    loc :: Arr (Data Word32) <- newArr n
+    vec <- unsafeFreezeArr loc
+    ref <- initRef 0
+    let when cond x = iff cond x (return ())
+    for (0, 1, Excl n) $ \i -> do
+      let x = arrIx vec i
+      when (x > 5) $ do
+        j <- unsafeFreezeRef ref
+        hint (j <= i)
+        setArr loc j x
+        setRef ref (j+1)
+
+rev_inplace :: Run ()
+rev_inplace = do
+    n <- fget stdin
+    loc :: Arr (Data Word32) <- newArr n
+    vec <- unsafeFreezeArr loc >>= unsafeThawArr
+    for (0, 1, Excl (n `div` 2 :: Data Word32)) $ \i -> do
+      x <- getArr vec i
+      y <- getArr vec (n-i-1)
+      setArr loc i y
+      setArr loc (n-i-1) x
 
 -- ------------------------------------------------------------
 
