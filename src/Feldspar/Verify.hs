@@ -15,7 +15,7 @@ verified = verified' def { compilerAssertions = allExcept [] }
 
 verified' :: MonadRun m => CompilerOpts -> (ProgC () -> IO a) -> m () -> IO a
 verified' opts backend prog = do
-  (prog', warns) <- Verify.runVerify . Verify.chattily $ do
+  (prog', warns) <- Verify.runVerify $ do
     lift declareFeldsparGlobals
     Verify.verify (translate (Env mempty opts) (liftRun prog))
   backend prog' <*
