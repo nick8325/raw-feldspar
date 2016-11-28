@@ -65,7 +65,7 @@ map_inplace = do
     n   <- fget stdin
     loc <- newArr n
     vec <- manifest loc (0 ... n-1)
-    manifestStore loc $ map (*33) vec
+    manifestStore loc $ map (+1) vec
     vec <- unsafeFreezeArr loc
     printf "result: %d\n" $ sum vec
 

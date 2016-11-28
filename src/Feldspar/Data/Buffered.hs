@@ -44,6 +44,8 @@
 module Feldspar.Data.Buffered
   ( Store
   , newStore
+  , newInPlaceStore
+  , replaceBackingStore
   , unsafeFreezeStore
   , unsafeFreezeStore2
   , setStore
@@ -81,6 +83,16 @@ data Store a = Store
 -- This operation allocates two arrays of the given length.
 newStore :: (Syntax a, MonadComp m) => Data Length -> m (Store a)
 newStore l = Store <$> newNamedArr "store" l <*> newNamedArr "store" l
+
+newInPlaceStore :: (Syntax a, MonadComp m) => Data Length -> m (Store a)
+newInPlaceStore l = do
+  arr1 <- newNamedArr "store" l
+  arr2 <- unsafeFreezeArr arr1 >>= unsafeThawArr
+  return (Store arr1 arr2)
+
+replaceBackingStore :: (Syntax a, MonadComp m) => Data Length -> Store a -> m (Store a)
+replaceBackingStore l Store{..} =
+  Store activeBuf <$> newNamedArr "store" l
 
 -- | Read the contents of a 'Store' without making a copy. This is generally
 -- only safe if the the 'Store' is not updated as long as the resulting vector
